@@ -96,6 +96,22 @@ final class VaultState: ObservableObject {
                         modified: extracted.modified,
                         parentID: currentParentID
                     )
+                } else if let archiveFiles = try ContainerCracker.extractArchive(url: url) {
+                    // Archive with multiple files — add all to vault
+                    for file in archiveFiles {
+                        try vault.addFile(
+                            name: file.name,
+                            data: file.dataFork,
+                            rsrc: file.rsrcFork.isEmpty ? nil : file.rsrcFork,
+                            typeCode: file.typeCode,
+                            creatorCode: file.creatorCode,
+                            finderFlags: file.finderFlags,
+                            created: file.created,
+                            modified: file.modified,
+                            sourceArchive: filename,
+                            parentID: currentParentID
+                        )
+                    }
                 } else {
                     // Not a container — add as raw file
                     let rsrc: Data? = {

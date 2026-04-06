@@ -83,4 +83,16 @@ public enum ContainerCracker {
             return nil
         }
     }
+
+    /// Extract an archive (StuffIt, Compact Pro, etc.) into multiple files.
+    /// Returns nil if the file is not an archive unar can handle.
+    public static func extractArchive(url: URL) throws -> [ExtractedFile]? {
+        guard UnarExtractor.canHandle(filename: url.lastPathComponent) else {
+            return nil
+        }
+        guard UnarExtractor.isAvailable() else {
+            throw ContainerError.unsupportedFormat("unar not installed. Run: brew install unar")
+        }
+        return try UnarExtractor.extract(archiveURL: url)
+    }
 }
