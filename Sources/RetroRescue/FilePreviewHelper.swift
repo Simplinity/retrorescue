@@ -187,10 +187,20 @@ enum FilePreviewHelper {
     }
 
     /// Open a file in the default macOS app.
+    /// PDFs are always opened in Preview.app, not the user's default PDF viewer.
     static func openInDefaultApp(vault: Vault, entry: VaultEntry) {
         guard let url = try? writeTempFile(vault: vault, entry: entry)
         else { return }
-        NSWorkspace.shared.open(url)
+
+        let ext = (entry.name as NSString).pathExtension.lowercased()
+        if ext == "pdf" {
+            // Force Preview.app for PDFs
+            let previewURL = URL(fileURLWithPath: "/System/Applications/Preview.app")
+            NSWorkspace.shared.open([url], withApplicationAt: previewURL,
+                                    configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     /// Read the text content of a file.
