@@ -63,7 +63,12 @@ final class ToolChain: ObservableObject {
     // MARK: - Discovery
 
     func discover() {
-        let bundle = Bundle.main.resourcePath ?? ""
+        let toolsDir: String
+        if let resPath = Bundle.main.resourcePath {
+            toolsDir = "\(resPath)/tools"
+        } else {
+            toolsDir = ""
+        }
 
         // macOS built-in tools (always present)
         register("sips", purpose: "Image conversion (PICT→PNG, resize)",
@@ -73,33 +78,32 @@ final class ToolChain: ObservableObject {
         register("qlmanage", purpose: "Quick Look preview",
                  system: "/usr/bin/qlmanage")
 
-        // Archive extraction
+        // Archive extraction — bundled
         register("unar", purpose: "Archive extraction (StuffIt, ZIP, RAR, 7z, etc.)",
-                 bundled: "\(bundle)/unar",
+                 bundled: "\(toolsDir)/unar",
                  homebrew: "/opt/homebrew/bin/unar")
+        register("lsar", purpose: "Archive listing",
+                 bundled: "\(toolsDir)/lsar",
+                 homebrew: "/opt/homebrew/bin/lsar")
 
-        // HFS disk image tools
+        // HFS disk image tools — bundled
         register("hmount", purpose: "Mount HFS disk images",
-                 bundled: "\(bundle)/hmount",
+                 bundled: "\(toolsDir)/hmount",
                  homebrew: "/opt/homebrew/bin/hmount")
         register("hls", purpose: "List HFS volume contents",
-                 bundled: "\(bundle)/hls",
+                 bundled: "\(toolsDir)/hls",
                  homebrew: "/opt/homebrew/bin/hls")
         register("hcopy", purpose: "Copy files from HFS volumes",
-                 bundled: "\(bundle)/hcopy",
+                 bundled: "\(toolsDir)/hcopy",
                  homebrew: "/opt/homebrew/bin/hcopy")
         register("humount", purpose: "Unmount HFS volumes",
-                 bundled: "\(bundle)/humount",
+                 bundled: "\(toolsDir)/humount",
                  homebrew: "/opt/homebrew/bin/humount")
 
-        // Media transcoding
-        register("ffmpeg", purpose: "Audio/video transcoding (QuickTime→MP4)",
-                 bundled: "\(bundle)/ffmpeg",
+        // Media — use AVFoundation natively, ffmpeg only as optional bonus
+        register("ffmpeg", purpose: "Audio/video transcoding (optional)",
                  homebrew: "/opt/homebrew/bin/ffmpeg")
-
-        // ffprobe (companion to ffmpeg)
-        register("ffprobe", purpose: "Media file analysis",
-                 bundled: "\(bundle)/ffprobe",
+        register("ffprobe", purpose: "Media file analysis (optional)",
                  homebrew: "/opt/homebrew/bin/ffprobe")
     }
 

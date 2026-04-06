@@ -1,0 +1,4 @@
+LGPL 2.1 — unar (The Unarchiver)
+GPL 2.0 — hfsutils (Robert Leslie)
+
+See individual LICENSE files for full text.

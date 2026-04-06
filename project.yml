@@ -48,6 +48,9 @@ targets:
       - path: Sources/RetroRescue
         excludes:
           - "**/.DS_Store"
+      - path: Resources/tools
+        buildPhase: resources
+        type: folder
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.simplinity.retrorescue
