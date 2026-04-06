@@ -11,12 +11,60 @@ struct RetroRescueApp: App {
                 .frame(minWidth: 700, minHeight: 450)
         }
         .commands {
-            CommandGroup(after: .newItem) {
+            // File menu
+            CommandGroup(replacing: .newItem) {
+                Button("New Vault...") {
+                    newVaultPanel()
+                }
+                .keyboardShortcut("n")
+
                 Button("Open Vault...") {
                     openVaultPanel()
                 }
                 .keyboardShortcut("o")
+
+                Divider()
+
+                Button("Add Files...") {
+                    addFilesPanel()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(!state.isOpen)
+
+                Button("Close Vault") {
+                    state.closeVault()
+                }
+                .keyboardShortcut("w")
+                .disabled(!state.isOpen)
             }
+
+            // Archive menu
+            CommandMenu("Archive") {
+                Button("Extract Contents") {
+                    state.extractSelected()
+                }
+                .keyboardShortcut("e")
+                .disabled(!state.selectedIsArchive || state.selectedHasExtracted)
+
+                Divider()
+
+                Button("Delete Selected") {
+                    state.deleteSelected()
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(state.selectedEntry == nil)
+            }
+        }
+    }
+
+    // MARK: - Panels
+
+    private func newVaultPanel() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.retroVault]
+        panel.nameFieldStringValue = "Untitled.retrovault"
+        if panel.runModal() == .OK, let url = panel.url {
+            state.createVault(at: url)
         }
     }
 
@@ -25,9 +73,17 @@ struct RetroRescueApp: App {
         panel.allowedContentTypes = [.retroVault]
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
-        panel.message = "Choose a .retrovault bundle"
         if panel.runModal() == .OK, let url = panel.url {
             state.openVault(at: url)
+        }
+    }
+
+    private func addFilesPanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK {
+            state.addFiles(urls: panel.urls)
         }
     }
 }
