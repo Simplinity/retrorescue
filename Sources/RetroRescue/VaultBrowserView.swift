@@ -48,14 +48,33 @@ struct VaultBrowserView: View {
     }
 
     private var fileList: some View {
-        List(state.entries, selection: Binding(
-            get: { state.selectedEntry?.id },
-            set: { id in state.selectedEntry = state.entries.first { $0.id == id } }
-        )) { entry in
-            FileRowView(entry: entry)
-                .onTapGesture(count: 2) {
-                    if entry.isDirectory { state.navigateInto(entry) }
+        Group {
+            if state.entries.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "arrow.down.doc")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.tertiary)
+                    Text("Drop files here")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("or click + to add")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
                 }
+                .frame(maxWidth: .infinity)
+            } else {
+                List(state.entries, selection: Binding(
+                    get: { state.selectedEntry?.id },
+                    set: { id in state.selectedEntry = state.entries.first { $0.id == id } }
+                )) { entry in
+                    FileRowView(entry: entry)
+                        .onTapGesture(count: 2) {
+                            if entry.isDirectory { state.navigateInto(entry) }
+                        }
+                }
+            }
         }
     }
 
@@ -113,8 +132,20 @@ struct VaultBrowserView: View {
                     Spacer()
                 }
                 .padding()
+            } else if state.entries.isEmpty {
+                ContentUnavailableView {
+                    Label("Empty vault", systemImage: "archivebox")
+                } description: {
+                    Text("Drop classic Mac files, disk images, or StuffIt archives onto this window to preserve them.")
+                } actions: {
+                    Button("Add Files...") { addFilesPanel() }
+                }
             } else {
-                ContentUnavailableView("Select a file", systemImage: "doc", description: Text("Choose a file from the sidebar to see its details"))
+                ContentUnavailableView {
+                    Label("No selection", systemImage: "cursorarrow.click.2")
+                } description: {
+                    Text("Select a file from the sidebar to inspect it.")
+                }
             }
         }
     }

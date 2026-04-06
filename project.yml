@@ -1,0 +1,91 @@
+name: RetroRescue
+options:
+  bundleIdPrefix: com.simplinity
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  swift-log:
+    url: https://github.com/apple/swift-log.git
+    from: "1.5.0"
+
+targets:
+  VaultEngine:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/VaultEngine
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.simplinity.retrorescue.vaultengine
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - package: swift-log
+        product: Logging
+      - sdk: libsqlite3.tbd
+
+  ContainerCracker:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/ContainerCracker
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.simplinity.retrorescue.containercracker
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: VaultEngine
+      - package: swift-log
+        product: Logging
+
+  RetroRescue:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/RetroRescue
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.simplinity.retrorescue
+        PRODUCT_NAME: RetroRescue
+        INFOPLIST_FILE: Sources/RetroRescue/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/RetroRescue/RetroRescue.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "0.1.0"
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_APP_SANDBOX: YES
+      configs:
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+          SWIFT_COMPILATION_MODE: wholemodule
+    dependencies:
+      - target: VaultEngine
+      - target: ContainerCracker
+      - package: swift-log
+        product: Logging
+
+  RetroRescueTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/VaultEngineTests
+        excludes:
+          - Fixtures
+      - path: Tests/ContainerCrackerTests
+        excludes:
+          - Fixtures
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: VaultEngine
+      - target: ContainerCracker

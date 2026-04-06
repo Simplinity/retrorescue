@@ -7,4 +7,5 @@ DerivedData/
 Package.resolved
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
+RetroRescue.xcodeproj/
 CLAUDE.md
