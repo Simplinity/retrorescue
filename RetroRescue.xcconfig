@@ -1,0 +1,34 @@
+// RetroRescue Xcode Build Configuration
+
+// Bundle ID
+PRODUCT_BUNDLE_IDENTIFIER = com.simplinity.retrorescue
+
+// Deployment target
+MACOSX_DEPLOYMENT_TARGET = 14.0
+
+// Code signing
+CODE_SIGN_STYLE = Automatic
+
+// Hardened Runtime (required for notarization)
+ENABLE_HARDENED_RUNTIME = YES
+
+// App Sandbox
+ENABLE_APP_SANDBOX = YES
+
+// Swift settings
+SWIFT_VERSION = 5.9
+
+// Info.plist and Entitlements
+INFOPLIST_FILE = Sources/RetroRescue/Info.plist
+CODE_SIGN_ENTITLEMENTS = Sources/RetroRescue/RetroRescue.entitlements
+
+// Product settings
+PRODUCT_NAME = RetroRescue
+PRODUCT_MODULE_NAME = RetroRescue
+
+// Asset catalog
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+
+// Build optimization
+SWIFT_OPTIMIZATION_LEVEL[config=Release] = -O
+SWIFT_COMPILATION_MODE[config=Release] = wholemodule

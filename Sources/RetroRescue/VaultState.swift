@@ -1,0 +1,112 @@
+import SwiftUI
+import VaultEngine
+
+/// Observable state managing the currently open vault.
+@MainActor
+final class VaultState: ObservableObject {
+    @Published var vault: Vault?
+    @Published var entries: [VaultEntry] = []
+    @Published var selectedEntry: VaultEntry?
+    @Published var currentParentID: String?
+    @Published var breadcrumb: [(id: String?, name: String)] = []
+    @Published var error: String?
+    @Published var isImporting = false
+
+    var isOpen: Bool { vault != nil }
+    var vaultName: String {
+        vault?.url.deletingPathExtension().lastPathComponent ?? "RetroRescue"
+    }
+
+    func createVault(at url: URL) {
+        do {
+            vault = try Vault.create(at: url)
+            currentParentID = nil
+            breadcrumb = [(nil, vaultName)]
+            refreshEntries()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func openVault(at url: URL) {
+        do {
+            vault = try Vault.open(at: url)
+            currentParentID = nil
+            breadcrumb = [(nil, vaultName)]
+            refreshEntries()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func closeVault() {
+        vault = nil
+        entries = []
+        selectedEntry = nil
+        currentParentID = nil
+        breadcrumb = []
+    }
+
+    func refreshEntries() {
+        guard let vault else { return }
+        do {
+            entries = try vault.entries(parentID: currentParentID)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func navigateInto(_ entry: VaultEntry) {
+        guard entry.isDirectory else { return }
+        currentParentID = entry.id
+        breadcrumb.append((entry.id, entry.name))
+        selectedEntry = nil
+        refreshEntries()
+    }
+
+    func navigateUp() {
+        guard breadcrumb.count > 1 else { return }
+        breadcrumb.removeLast()
+        currentParentID = breadcrumb.last?.id
+        selectedEntry = nil
+        refreshEntries()
+    }
+
+    func addFiles(urls: [URL]) {
+        guard let vault else { return }
+        isImporting = true
+        defer { isImporting = false }
+
+        for url in urls {
+            do {
+                let data = try Data(contentsOf: url)
+                // Check for resource fork via extended attribute
+                let rsrc: Data? = {
+                    let rsrcURL = url.appendingPathComponent("..namedfork/rsrc")
+                    return try? Data(contentsOf: rsrcURL)
+                }()
+
+                try vault.addFile(
+                    name: url.lastPathComponent,
+                    data: data,
+                    rsrc: rsrc,
+                    parentID: currentParentID
+                )
+            } catch {
+                self.error = "Failed to add \(url.lastPathComponent): \(error.localizedDescription)"
+            }
+        }
+        refreshEntries()
+    }
+
+    func deleteSelected() {
+        guard let vault, let entry = selectedEntry else { return }
+        do {
+            try vault.delete(id: entry.id)
+            selectedEntry = nil
+            refreshEntries()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
