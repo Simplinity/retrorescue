@@ -63,38 +63,28 @@ struct VaultBrowserView: View {
     private var detailPanel: some View {
         Group {
             if let entry = state.selectedEntry {
-                if state.selectedHasExtracted {
-                    // Resizable split: info top, file browser bottom
-                    VSplitView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            archiveInfoSection(entry)
-                                .padding()
-                            Spacer(minLength: 0)
-                        }
-                        .frame(minHeight: 100)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Compact info section at top
+                    archiveInfoSection(entry)
+                        .padding()
 
-                        VStack(spacing: 0) {
-                            extractedFilesSection
-
-                            if let previewing = state.previewingEntry {
-                                Divider()
-                                filePreviewSection(previewing)
-                            }
-                        }
-                        .frame(minHeight: 150)
+                    if state.selectedIsArchive && !state.selectedHasExtracted {
+                        extractPromptCard(entry)
+                            .padding(.horizontal)
                     }
-                } else {
-                    VStack(alignment: .leading, spacing: 0) {
-                        archiveInfoSection(entry)
-                            .padding()
 
-                        if state.selectedIsArchive {
-                            extractPromptCard(entry)
-                                .padding(.horizontal)
+                    if state.selectedHasExtracted {
+                        Divider()
+                        // File browser takes all remaining space
+                        extractedFilesSection
+
+                        if let previewing = state.previewingEntry {
+                            Divider()
+                            filePreviewSection(previewing)
                         }
-
-                        Spacer(minLength: 0)
                     }
+
+                    Spacer(minLength: 0)
                 }
             } else if state.entries.isEmpty {
                 ContentUnavailableView {
