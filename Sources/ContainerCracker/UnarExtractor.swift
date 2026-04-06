@@ -49,13 +49,35 @@ public enum UnarExtractor {
 
     /// Supported archive extensions that unar handles.
     public static let supportedExtensions: Set<String> = [
-        "sit", "sea", "cpt", "dd", "hqx", "bin",
-        "arc", "zoo", "lzh", "lha", "pit",
-        "zip", "rar", "7z", "tar", "gz", "bz2",
+        // Classic Mac archives
+        "sit", "sitx", "sea", "cpt", "dd", "hqx", "bin",
+        "pit", "now",
+        // Vintage archives
+        "arc", "zoo", "lzh", "lha", "arj",
+        // Modern archives
+        "zip", "rar", "7z", "cab",
+        // Tar + compression
+        "tar", "gz", "tgz", "bz2", "tbz", "tbz2",
+        "xz", "txz", "lzma", "tlz", "zst",
+        "Z",  // Unix compress
+        // Disk/package formats unar can handle
+        "mar", "msi", "nsis", "deb", "rpm",
+        "dmg", "iso",
+    ]
+
+    /// Compound extensions where the last part alone isn't enough.
+    private static let compoundExtensions: Set<String> = [
+        "tar.gz", "tar.bz2", "tar.xz", "tar.lzma", "tar.zst",
+        "tar.Z", "mar.xz",
     ]
 
     /// Check if a file extension is an archive unar can handle.
     public static func canHandle(filename: String) -> Bool {
+        let lower = filename.lowercased()
+        // Check compound extensions first
+        for compound in compoundExtensions {
+            if lower.hasSuffix(".\(compound)") { return true }
+        }
         let ext = (filename as NSString).pathExtension.lowercased()
         return supportedExtensions.contains(ext)
     }
