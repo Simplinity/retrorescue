@@ -170,6 +170,7 @@ final class VaultState: ObservableObject {
     /// Check if a file is extractable (archive, disk image, etc.)
     static func isExtractable(_ name: String) -> Bool {
         UnarExtractor.canHandle(filename: name)
+            || (HFSExtractor.canHandle(filename: name) && ToolChain.shared.canExtractHFS)
     }
 
     // MARK: - Preview & Open
@@ -187,13 +188,16 @@ final class VaultState: ObservableObject {
     /// Quick Look a file using macOS Quick Look.
     func quickLook(_ entry: VaultEntry) {
         guard let vault else { return }
+        guard let qlPath = ToolChain.shared.qlmanage else {
+            self.error = "Quick Look not available"
+            return
+        }
         guard let url = try? FilePreviewHelper.writeTempFile(vault: vault, entry: entry) else {
             self.error = "Could not write temp file for preview"
             return
         }
-        // Use qlmanage for Quick Look preview
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/qlmanage")
+        process.executableURL = URL(fileURLWithPath: qlPath)
         process.arguments = ["-p", url.path]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -238,7 +242,22 @@ final class VaultState: ObservableObject {
             try archiveData.write(to: tempFile)
             defer { try? FileManager.default.removeItem(at: tempFile) }
 
-            let extracted = try UnarExtractor.extract(archiveURL: tempFile)
+            let extracted: [ExtractedFile]
+            if UnarExtractor.canHandle(filename: entry.name) {
+                extracted = try UnarExtractor.extract(archiveURL: tempFile)
+            } else if HFSExtractor.canHandle(filename: entry.name),
+                      let hm = ToolChain.shared.hmount,
+                      let hl = ToolChain.shared.hls,
+                      let hc = ToolChain.shared.hcopy,
+                      let hu = ToolChain.shared.humount {
+                extracted = try HFSExtractor.extract(
+                    imageURL: tempFile,
+                    hmountPath: hm, hlsPath: hl,
+                    hcopyPath: hc, humountPath: hu)
+            } else {
+                self.error = "No extraction tool available for \(entry.name)"
+                return
+            }
             guard !extracted.isEmpty else {
                 self.error = "Archive appears to be empty"
                 return

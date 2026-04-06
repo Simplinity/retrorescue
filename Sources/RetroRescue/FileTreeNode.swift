@@ -12,7 +12,9 @@ class FileTreeNode: Identifiable, ObservableObject {
     @Published var children: [FileTreeNode]?
 
     var isExtractable: Bool {
-        !entry.isDirectory && UnarExtractor.canHandle(filename: entry.name)
+        !entry.isDirectory
+            && (UnarExtractor.canHandle(filename: entry.name)
+                || HFSExtractor.canHandle(filename: entry.name))
             && (children == nil || children!.isEmpty)
     }
 

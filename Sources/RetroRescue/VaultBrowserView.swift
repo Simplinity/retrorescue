@@ -210,6 +210,10 @@ struct VaultBrowserView: View {
         case "mar": return "Macintosh archive"
         case "dmg": return "disk image"
         case "iso": return "ISO disc image"
+        case "img", "image": return "HFS disk image"
+        case "dsk", "disk": return "HFS disk image"
+        case "hfs", "hfv": return "HFS volume"
+        case "toast": return "Toast disc image"
         default: return "compressed archive"
         }
     }

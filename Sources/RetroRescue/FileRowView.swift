@@ -47,6 +47,7 @@ struct FileRowView: View {
 
     private var isArchive: Bool {
         UnarExtractor.canHandle(filename: entry.name)
+            || HFSExtractor.canHandle(filename: entry.name)
     }
 
     private var iconName: String {
