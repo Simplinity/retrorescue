@@ -19,14 +19,68 @@ public enum HFSExtractor {
     }
 
     /// Extract all files from an HFS disk image.
+    /// Handles DiskCopy 4.2 format (strips 84-byte header).
     /// Uses hfsutils: hmount → hls -R → hcopy → humount
     public static func extract(imageURL: URL,
                                hmountPath: String,
                                hlsPath: String,
                                hcopyPath: String,
                                humountPath: String) throws -> [ExtractedFile] {
-        let imagePath = imageURL.path
 
+        // Read the image and handle DiskCopy 4.2 format
+        let rawData = try Data(contentsOf: imageURL)
+        let diskData: Data
+        var imagePath = imageURL.path
+
+        if isDiskCopy42(rawData) {
+            // Check if it's MFS (not supported by hfsutils)
+            let dataOffset = 84
+            if rawData.count > dataOffset + 1026 {
+                let magic = UInt16(rawData[dataOffset + 1024]) << 8
+                         | UInt16(rawData[dataOffset + 1025])
+                if magic == 0xD2D7 {
+                    throw ContainerError.unsupportedFormat(
+                        "This is an MFS (Macintosh File System) volume from the original 128K/512K Mac. MFS support is planned for a future version.")
+                }
+            }
+
+            // Strip DiskCopy 4.2 header
+            let dataSize = Int(rawData[64]) << 24 | Int(rawData[65]) << 16
+                         | Int(rawData[66]) << 8  | Int(rawData[67])
+            let end = min(84 + dataSize, rawData.count)
+            diskData = rawData[84..<end]
+
+            // Write stripped image to temp
+            let stripped = FileManager.default.temporaryDirectory
+                .appendingPathComponent("retrorescue-hfs-\(UUID().uuidString).raw")
+            try diskData.write(to: stripped)
+            defer { try? FileManager.default.removeItem(at: stripped) }
+            imagePath = stripped.path
+
+            return try extractHFS(imagePath: imagePath,
+                                  hmountPath: hmountPath, hlsPath: hlsPath,
+                                  hcopyPath: hcopyPath, humountPath: humountPath)
+        } else {
+            // Try raw HFS directly
+            return try extractHFS(imagePath: imagePath,
+                                  hmountPath: hmountPath, hlsPath: hlsPath,
+                                  hcopyPath: hcopyPath, humountPath: humountPath)
+        }
+    }
+
+    /// Detect DiskCopy 4.2 format: magic 0x0100 at offset 82-83.
+    private static func isDiskCopy42(_ data: Data) -> Bool {
+        guard data.count > 84 else { return false }
+        return data[82] == 0x01 && data[83] == 0x00
+    }
+
+    // MARK: - HFS extraction via hfsutils
+
+    private static func extractHFS(imagePath: String,
+                                   hmountPath: String,
+                                   hlsPath: String,
+                                   hcopyPath: String,
+                                   humountPath: String) throws -> [ExtractedFile] {
         // Mount the HFS image
         let mount = Process()
         mount.executableURL = URL(fileURLWithPath: hmountPath)
