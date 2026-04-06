@@ -1,9 +1,10 @@
 import SwiftUI
 import VaultEngine
+import ContainerCracker
 
-/// A row in the left sidebar archive list.
 struct FileRowView: View {
     let entry: VaultEntry
+    var isExtracted: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -15,15 +16,14 @@ struct FileRowView: View {
                 Text(entry.name)
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if let tc = entry.typeCreatorDisplay {
                         Text(tc)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                     Text(ByteCountFormatter.string(
-                        fromByteCount: entry.dataForkSize,
-                        countStyle: .file
+                        fromByteCount: entry.dataForkSize, countStyle: .file
                     ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -33,13 +33,24 @@ struct FileRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
+
+                    if isExtracted {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    }
                 }
             }
         }
         .padding(.vertical, 2)
     }
 
+    private var isArchive: Bool {
+        UnarExtractor.canHandle(filename: entry.name)
+    }
+
     private var iconName: String {
+        if isArchive { return "archivebox" }
         switch entry.typeCode {
         case "TEXT", "ttro": return "doc.text"
         case "PICT": return "photo"
@@ -50,6 +61,7 @@ struct FileRowView: View {
     }
 
     private var iconColor: Color {
+        if isArchive { return isExtracted ? .green : .orange }
         switch entry.typeCode {
         case "PICT": return .green
         case "APPL": return .purple

@@ -33,15 +33,14 @@ struct VaultBrowserView: View {
                         state.select(entry)
                     }
                 )) { entry in
-                    FileRowView(entry: entry)
+                    FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
                         .contextMenu {
-                            if VaultState.isExtractable(entry.name) {
+                            if VaultState.isExtractable(entry.name) && !state.isAlreadyExtracted(id: entry.id) {
                                 Button("Extract Contents") {
                                     state.select(entry)
                                     state.extractSelected()
                                 }
                             }
-                            Divider()
                             Button("Delete", role: .destructive) {
                                 state.select(entry)
                                 state.deleteSelected()
@@ -75,18 +74,18 @@ struct VaultBrowserView: View {
     private var detailPanel: some View {
         Group {
             if let entry = state.selectedEntry {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Archive info section
-                        archiveInfoSection(entry)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Archive info (fixed at top)
+                    archiveInfoSection(entry)
+                        .padding()
 
-                        // Extracted file browser
-                        if state.selectedHasExtracted {
-                            Divider()
-                            extractedFilesSection
-                        }
+                    if state.selectedHasExtracted {
+                        Divider()
+                        // Extracted file browser (takes remaining space)
+                        extractedFilesSection
                     }
-                    .padding()
+
+                    Spacer(minLength: 0)
                 }
             } else if state.entries.isEmpty {
                 ContentUnavailableView {
@@ -155,18 +154,12 @@ struct VaultBrowserView: View {
     }
 
     private var extractedFilesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Extracted Contents")
-                .font(.headline)
-
-            List(state.extractedTree, children: \.children) { node in
-                ExtractedFileRow(node: node) { entryID in
-                    state.extractEntry(id: entryID)
-                }
+        List(state.extractedTree, children: \.children) { node in
+            ExtractedFileRow(node: node) { entryID in
+                state.extractEntry(id: entryID)
             }
-            .listStyle(.inset(alternatesRowBackgrounds: true))
-            .frame(minHeight: 200)
         }
+        .listStyle(.inset(alternatesRowBackgrounds: true))
     }
 
     // MARK: - Toolbar
@@ -188,11 +181,9 @@ struct VaultBrowserView: View {
 
     private var statusBar: some View {
         HStack {
-            if let vault = state.vault {
-                Text("\(vault.entryCount) items")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("\(state.entries.count) items")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Spacer()
         }
         .padding(.horizontal, 12)

@@ -159,6 +159,13 @@ final class VaultState: ObservableObject {
         UnarExtractor.canHandle(filename: name)
     }
 
+    /// Check if an entry has already been extracted.
+    func isAlreadyExtracted(id: String) -> Bool {
+        guard let vault else { return false }
+        let kids = (try? vault.entries(parentID: id)) ?? []
+        return !kids.isEmpty
+    }
+
     func extractSelected() {
         guard let entry = selectedEntry else { return }
         extractEntry(id: entry.id)
@@ -169,6 +176,11 @@ final class VaultState: ObservableObject {
     func extractEntry(id: String) {
         guard let vault else { return }
         guard let entry = try? vault.entry(id: id) else { return }
+
+        // Prevent double extraction
+        let existing = (try? vault.entries(parentID: id)) ?? []
+        guard existing.isEmpty else { return }
+
         isImporting = true
         defer { isImporting = false }
 
