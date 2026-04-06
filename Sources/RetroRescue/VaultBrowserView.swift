@@ -63,35 +63,37 @@ struct VaultBrowserView: View {
     private var detailPanel: some View {
         Group {
             if let entry = state.selectedEntry {
-                if state.selectedHasExtracted {
-                    VSplitView {
-                        ScrollView {
-                            archiveInfoSection(entry)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding()
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 80, idealHeight: 120, maxHeight: .infinity)
+                VStack(spacing: 0) {
+                    // Info section: auto-sizes to content, NOT resizable
+                    archiveInfoSection(entry)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
 
-                        VStack(spacing: 0) {
-                            extractedFilesSection
-
-                            if let previewing = state.previewingEntry {
-                                Divider()
-                                filePreviewSection(previewing)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 150, idealHeight: 400, maxHeight: .infinity)
+                    if state.selectedIsArchive && !state.selectedHasExtracted {
+                        extractPromptCard(entry)
+                            .padding(.horizontal)
+                        Spacer(minLength: 0)
                     }
-                } else {
-                    VStack(alignment: .leading, spacing: 0) {
-                        archiveInfoSection(entry)
-                            .padding()
 
-                        if state.selectedIsArchive {
-                            extractPromptCard(entry)
-                                .padding(.horizontal)
+                    if state.selectedHasExtracted {
+                        Divider()
+
+                        if state.previewingEntry != nil {
+                            // File browser + preview: resizable divider between them
+                            VSplitView {
+                                extractedFilesSection
+                                    .frame(maxWidth: .infinity, minHeight: 100, idealHeight: 300, maxHeight: .infinity)
+
+                                filePreviewSection(state.previewingEntry!)
+                                    .frame(maxWidth: .infinity, minHeight: 80, idealHeight: 200, maxHeight: .infinity)
+                            }
+                        } else {
+                            // File browser only: takes all remaining space
+                            extractedFilesSection
                         }
+                    }
 
+                    if !state.selectedHasExtracted && !state.selectedIsArchive {
                         Spacer(minLength: 0)
                     }
                 }
