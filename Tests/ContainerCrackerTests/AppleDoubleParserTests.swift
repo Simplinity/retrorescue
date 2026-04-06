@@ -2,68 +2,95 @@ import Testing
 import Foundation
 @testable import ContainerCracker
 
+/// Tests for the AppleSingle/AppleDouble parser.
 struct AppleDoubleParserTests {
 
-    /// Build a minimal AppleSingle file with data fork, rsrc fork, and Finder info.
+    /// Build a minimal AppleSingle file for testing.
     private static func makeAppleSingle(
-        dataFork: Data = Data("data".utf8),
-        rsrcFork: Data = Data([0xDE, 0xAD]),
+        name: String = "Test",
         type: String = "TEXT",
-        creator: String = "ttxt"
+        creator: String = "ttxt",
+        dataFork: Data = Data("hello".utf8),
+        rsrcFork: Data = Data()
     ) -> Data {
-        // AppleSingle header: magic(4) + version(4) + filler(16) + entryCount(2)
         var file = Data()
-        // Magic: 0x00051600
-        file.append(contentsOf: [0x00, 0x05, 0x16, 0x00])
-        // Version: 0x00020000
-        file.append(contentsOf: [0x00, 0x02, 0x00, 0x00])
-        // Filler: 16 zero bytes
-        file.append(Data(repeating: 0, count: 16))
-        // Entry count: 3 (data fork, rsrc fork, Finder info)
-        file.append(contentsOf: [0x00, 0x03])
 
-        // Entry table starts at offset 26, each entry is 12 bytes
-        // Entries start after: 26 + 3*12 = 62
-        let finderOffset: UInt32 = 62
-        let finderLen: UInt32 = 32
-        let dataOffset = finderOffset + finderLen
-        let dataLen = UInt32(dataFork.count)
-        let rsrcOffset = dataOffset + dataLen
-        let rsrcLen = UInt32(rsrcFork.count)
+        // Header
+        appendBE32(&file, 0x00051600) // AppleSingle magic
+        appendBE32(&file, 0x00020000) // Version 2
+        file.append(Data(repeating: 0, count: 16)) // Filler
 
-        // Entry 1: Finder info (ID=9)
-        file.append(contentsOf: toBE32(9))
-        file.append(contentsOf: toBE32(finderOffset))
-        file.append(contentsOf: toBE32(finderLen))
-        // Entry 2: Data fork (ID=1)
-        file.append(contentsOf: toBE32(1))
-        file.append(contentsOf: toBE32(dataOffset))
-        file.append(contentsOf: toBE32(dataLen))
-        // Entry 3: Resource fork (ID=2)
-        file.append(contentsOf: toBE32(2))
-        file.append(contentsOf: toBE32(rsrcOffset))
-        file.append(contentsOf: toBE32(rsrcLen))
+        // Count entries: data fork (1) + resource fork (2) + real name (3) + finder info (9)
+        var entryCount: UInt16 = 2 // always have name + finder info
+        if !dataFork.isEmpty { entryCount += 1 }
+        if !rsrcFork.isEmpty { entryCount += 1 }
+        appendBE16(&file, entryCount)
 
-        // Finder info: type(4) + creator(4) + flags(2) + padding(22)
-        var finder = Data(repeating: 0, count: 32)
-        let tb = Array(type.utf8.prefix(4))
-        let cb = Array(creator.utf8.prefix(4))
-        for (i, b) in tb.enumerated() { finder[i] = b }
-        for (i, b) in cb.enumerated() { finder[4 + i] = b }
-        file.append(finder)
+        // Calculate offsets (header=26, each entry descriptor=12)
+        let entryTableSize = Int(entryCount) * 12
+        var dataOffset = 26 + entryTableSize
 
-        // Data fork
-        file.append(dataFork)
-        // Resource fork
-        file.append(rsrcFork)
+        // Build entry table + data sections
+        var entries = Data()
+        var payload = Data()
 
+        // Entry: Real name (ID=3)
+        let nameData = Data(name.utf8)
+        appendBE32(&entries, 3) // ID
+        appendBE32(&entries, UInt32(dataOffset)) // offset
+        appendBE32(&entries, UInt32(nameData.count)) // length
+        payload.append(nameData)
+        dataOffset += nameData.count
+
+        // Entry: Finder info (ID=9, 32 bytes)
+        var finderInfo = Data(repeating: 0, count: 32)
+        // Type at offset 0, creator at offset 4
+        let typeBytes = Array(type.utf8.prefix(4))
+        let creatorBytes = Array(creator.utf8.prefix(4))
+        for (i, b) in typeBytes.enumerated() { finderInfo[i] = b }
+        for (i, b) in creatorBytes.enumerated() { finderInfo[4 + i] = b }
+
+        appendBE32(&entries, 9)
+        appendBE32(&entries, UInt32(dataOffset))
+        appendBE32(&entries, 32)
+        payload.append(finderInfo)
+        dataOffset += 32
+
+        // Entry: Data fork (ID=1)
+        if !dataFork.isEmpty {
+            appendBE32(&entries, 1)
+            appendBE32(&entries, UInt32(dataOffset))
+            appendBE32(&entries, UInt32(dataFork.count))
+            payload.append(dataFork)
+            dataOffset += dataFork.count
+        }
+
+        // Entry: Resource fork (ID=2)
+        if !rsrcFork.isEmpty {
+            appendBE32(&entries, 2)
+            appendBE32(&entries, UInt32(dataOffset))
+            appendBE32(&entries, UInt32(rsrcFork.count))
+            payload.append(rsrcFork)
+        }
+
+        file.append(entries)
+        file.append(payload)
         return file
     }
 
-    private static func toBE32(_ v: UInt32) -> [UInt8] {
-        [UInt8((v >> 24) & 0xFF), UInt8((v >> 16) & 0xFF),
-         UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)]
+    private static func appendBE32(_ data: inout Data, _ v: UInt32) {
+        data.append(UInt8((v >> 24) & 0xFF))
+        data.append(UInt8((v >> 16) & 0xFF))
+        data.append(UInt8((v >> 8) & 0xFF))
+        data.append(UInt8(v & 0xFF))
     }
+
+    private static func appendBE16(_ data: inout Data, _ v: UInt16) {
+        data.append(UInt8((v >> 8) & 0xFF))
+        data.append(UInt8(v & 0xFF))
+    }
+
+    // MARK: - Tests
 
     @Test func detectAppleSingle() {
         let data = Self.makeAppleSingle()
@@ -73,19 +100,26 @@ struct AppleDoubleParserTests {
 
     @Test func parseAppleSingle() throws {
         let data = Self.makeAppleSingle(
+            name: "MyFile",
+            type: "TEXT",
+            creator: "ttxt",
             dataFork: Data("content".utf8),
-            rsrcFork: Data([0xCA, 0xFE]),
-            type: "APPL",
-            creator: "TEST"
+            rsrcFork: Data([0xCA, 0xFE])
         )
         let result = try AppleDoubleParser.parse(data)
 
+        #expect(result.realName == "MyFile")
         #expect(result.dataFork == Data("content".utf8))
         #expect(result.rsrcFork == Data([0xCA, 0xFE]))
 
-        // Check Finder info extraction
+        // Check Finder info type/creator extraction
         let (type, creator) = AppleDoubleParser.typeCreator(from: result.finderInfo!)
-        #expect(type == "APPL")
-        #expect(creator == "TEST")
+        #expect(type == "TEXT")
+        #expect(creator == "ttxt")
+    }
+
+    @Test func rejectNonAppleDouble() {
+        let random = Data("not apple double".utf8)
+        #expect(AppleDoubleParser.canParse(random) == false)
     }
 }
