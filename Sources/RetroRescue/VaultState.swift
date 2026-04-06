@@ -83,8 +83,9 @@ final class VaultState: ObservableObject {
                 let data = try Data(contentsOf: url)
                 let filename = url.lastPathComponent
 
-                // Try to detect and unwrap classic Mac containers
-                if let extracted = try ContainerCracker.extract(data: data, filename: filename) {
+                // 1. Try single-file wrapper (MacBinary, BinHex, AppleDouble)
+                let singleFile = try? ContainerCracker.extract(data: data, filename: filename)
+                if let extracted = singleFile {
                     try vault.addFile(
                         name: extracted.name,
                         data: extracted.dataFork,
@@ -96,8 +97,12 @@ final class VaultState: ObservableObject {
                         modified: extracted.modified,
                         parentID: currentParentID
                     )
-                } else if let archiveFiles = try ContainerCracker.extractArchive(url: url) {
-                    // Archive with multiple files — add all to vault
+                    continue
+                }
+
+                // 2. Try archive extraction (StuffIt, Compact Pro, ZIP, etc.)
+                if let archiveFiles = try? ContainerCracker.extractArchive(url: url),
+                   !archiveFiles.isEmpty {
                     for file in archiveFiles {
                         try vault.addFile(
                             name: file.name,
@@ -112,19 +117,20 @@ final class VaultState: ObservableObject {
                             parentID: currentParentID
                         )
                     }
-                } else {
-                    // Not a container — add as raw file
-                    let rsrc: Data? = {
-                        let rsrcURL = url.appendingPathComponent("..namedfork/rsrc")
-                        return try? Data(contentsOf: rsrcURL)
-                    }()
-                    try vault.addFile(
-                        name: filename,
-                        data: data,
-                        rsrc: rsrc,
-                        parentID: currentParentID
-                    )
+                    continue
                 }
+
+                // 3. Raw file — no container detected
+                let rsrc: Data? = {
+                    let rsrcURL = url.appendingPathComponent("..namedfork/rsrc")
+                    return try? Data(contentsOf: rsrcURL)
+                }()
+                try vault.addFile(
+                    name: filename,
+                    data: data,
+                    rsrc: rsrc,
+                    parentID: currentParentID
+                )
             } catch {
                 self.error = "Failed to add \(url.lastPathComponent): \(error.localizedDescription)"
             }
