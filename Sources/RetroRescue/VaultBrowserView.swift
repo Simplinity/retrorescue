@@ -63,28 +63,38 @@ struct VaultBrowserView: View {
     private var detailPanel: some View {
         Group {
             if let entry = state.selectedEntry {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Archive info (fixed at top)
-                    archiveInfoSection(entry)
-                        .padding()
-
-                    // Extract prompt for unextracted archives
-                    if state.selectedIsArchive && !state.selectedHasExtracted {
-                        extractPromptCard(entry)
-                            .padding(.horizontal)
-                    }
-
-                    if state.selectedHasExtracted {
-                        Divider()
-                        extractedFilesSection
-
-                        if let previewing = state.previewingEntry {
-                            Divider()
-                            filePreviewSection(previewing)
+                if state.selectedHasExtracted {
+                    // Resizable split: info top, file browser bottom
+                    VSplitView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            archiveInfoSection(entry)
+                                .padding()
+                            Spacer(minLength: 0)
                         }
-                    }
+                        .frame(minHeight: 100)
 
-                    Spacer(minLength: 0)
+                        VStack(spacing: 0) {
+                            extractedFilesSection
+
+                            if let previewing = state.previewingEntry {
+                                Divider()
+                                filePreviewSection(previewing)
+                            }
+                        }
+                        .frame(minHeight: 150)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        archiveInfoSection(entry)
+                            .padding()
+
+                        if state.selectedIsArchive {
+                            extractPromptCard(entry)
+                                .padding(.horizontal)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
                 }
             } else if state.entries.isEmpty {
                 ContentUnavailableView {
