@@ -112,17 +112,21 @@ final class ToolChain: ObservableObject {
         var tool = Tool(id: id, name: id, purpose: purpose)
         let fm = FileManager.default
 
-        // Priority: bundled > system > homebrew
+        // Bundled in .app (release) or system (macOS built-in)
         if let p = bundled, fm.isExecutableFile(atPath: p) {
             tool.path = p
             tool.source = .bundled
         } else if let p = system, fm.isExecutableFile(atPath: p) {
             tool.path = p
             tool.source = .system
-        } else if let p = homebrew, fm.isExecutableFile(atPath: p) {
+        }
+        #if DEBUG
+        // Development only: fall back to homebrew if not bundled yet
+        if tool.path == nil, let p = homebrew, fm.isExecutableFile(atPath: p) {
             tool.path = p
             tool.source = .homebrew
         }
+        #endif
 
         tools[id] = tool
     }
