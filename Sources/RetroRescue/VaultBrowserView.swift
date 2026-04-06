@@ -179,16 +179,37 @@ struct VaultBrowserView: View {
     }
 
     private func archiveTypeLabel(_ name: String) -> String {
+        let lower = name.lowercased()
+        // Compound extensions first
+        if lower.hasSuffix(".tar.gz") || lower.hasSuffix(".tgz") { return "compressed tar archive" }
+        if lower.hasSuffix(".tar.bz2") || lower.hasSuffix(".tbz2") { return "bzip2 tar archive" }
+        if lower.hasSuffix(".tar.xz") || lower.hasSuffix(".txz") { return "XZ-compressed tar archive" }
+        if lower.hasSuffix(".mar.xz") { return "XZ-compressed Macintosh archive" }
         let ext = (name as NSString).pathExtension.lowercased()
         switch ext {
         case "sit": return "StuffIt archive"
+        case "sitx": return "StuffIt X archive"
         case "sea": return "self-extracting StuffIt archive"
         case "cpt": return "Compact Pro archive"
+        case "dd": return "DiskDoubler archive"
+        case "pit": return "PackIt archive"
         case "7z": return "7-Zip archive"
         case "rar": return "RAR archive"
         case "zip": return "ZIP archive"
-        case "gz", "tar": return "compressed archive"
-        case "dd": return "DiskDoubler archive"
+        case "gz": return "Gzip-compressed file"
+        case "bz2": return "Bzip2-compressed file"
+        case "xz": return "XZ-compressed file"
+        case "lzma": return "LZMA-compressed file"
+        case "zst": return "Zstandard-compressed file"
+        case "tar": return "tar archive"
+        case "cab": return "Windows Cabinet archive"
+        case "arj": return "ARJ archive"
+        case "arc": return "ARC archive"
+        case "zoo": return "Zoo archive"
+        case "lzh", "lha": return "LHA/LZH archive"
+        case "mar": return "Macintosh archive"
+        case "dmg": return "disk image"
+        case "iso": return "ISO disc image"
         default: return "compressed archive"
         }
     }
