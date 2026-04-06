@@ -230,7 +230,10 @@ struct VaultBrowserView: View {
     }
 
     private var extractedFilesSection: some View {
-        List(state.extractedTree, children: \.children) { node in
+        List(state.extractedTree, children: \.children, selection: Binding(
+            get: { state.selectedExtractedID },
+            set: { state.selectExtractedFile(id: $0) }
+        )) { node in
             ExtractedFileRow(node: node) { entryID in
                 state.extractEntry(id: entryID)
             } onQuickLook: { entry in

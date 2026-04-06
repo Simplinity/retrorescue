@@ -11,6 +11,7 @@ final class VaultState: ObservableObject {
     @Published var extractedTree: [FileTreeNode] = []   // tree nodes for outline view
     @Published var previewingEntry: VaultEntry?          // file being previewed in right panel
     @Published var previewText: String?                  // text content for inline preview
+    @Published var selectedExtractedID: String?          // selected file in extracted tree
     @Published var error: String?
     @Published var isImporting = false
 
@@ -82,6 +83,9 @@ final class VaultState: ObservableObject {
         guard let vault, let entry = selectedEntry else {
             extractedEntries = []
             extractedTree = []
+            selectedExtractedID = nil
+            previewingEntry = nil
+            previewText = nil
             return
         }
         do {
@@ -174,6 +178,30 @@ final class VaultState: ObservableObject {
     }
 
     // MARK: - Preview & Open
+
+    /// Called when a file is selected in the extracted tree.
+    /// Auto-previews if the file is previewable.
+    func selectExtractedFile(id: String?) {
+        selectedExtractedID = id
+        guard let vault, let id else {
+            previewingEntry = nil
+            previewText = nil
+            return
+        }
+        guard let entry = try? vault.entry(id: id),
+              !entry.isDirectory else {
+            previewingEntry = nil
+            previewText = nil
+            return
+        }
+
+        if FilePreviewHelper.isTextPreviewable(entry: entry) {
+            previewFile(entry)
+        } else {
+            previewingEntry = nil
+            previewText = nil
+        }
+    }
 
     /// Preview a file from the extracted tree.
     func previewFile(_ entry: VaultEntry) {
