@@ -10,7 +10,9 @@ public enum HFSExtractor {
     public static let supportedExtensions: Set<String> = [
         "img", "image", "dsk", "disk",
         "hfs", "hfv",
-        "toast",  // Roxio Toast images (sometimes HFS)
+        "mar",          // DART (Disk Archive/Retrieval Tool) — DiskCopy 4.2 variant
+        "dart",         // DART alternate extension
+        "toast",        // Roxio Toast images (sometimes HFS)
     ]
 
     public static func canHandle(filename: String) -> Bool {

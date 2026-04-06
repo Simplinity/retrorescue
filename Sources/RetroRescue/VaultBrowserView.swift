@@ -227,6 +227,7 @@ struct VaultBrowserView: View {
         case "cdr": return "macOS disc master image"
         case "toast": return "Toast disc image"
         case "img", "image": return "HFS disk image"
+        case "mar", "dart": return "DART disk archive"
         case "dsk", "disk": return "HFS disk image"
         case "hfs", "hfv": return "HFS volume"
         case "toast": return "Toast disc image"

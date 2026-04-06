@@ -72,7 +72,7 @@ public enum UnarExtractor {
         "cdr",          // macOS Disk Utility CD/DVD master
         "toast",        // Roxio Toast image
         // Disk/package formats
-        "mar", "msi", "nsis", "deb", "rpm",
+        "msi", "nsis", "deb", "rpm",
         "dmg",
         // Amiga formats (unar via libxad)
         "adf", "dms", "lzx",
@@ -81,7 +81,7 @@ public enum UnarExtractor {
     /// Compound extensions where the last part alone isn't enough.
     private static let compoundExtensions: Set<String> = [
         "tar.gz", "tar.bz2", "tar.xz", "tar.lzma", "tar.zst",
-        "tar.Z", "mar.xz",
+        "tar.Z",
     ]
 
     /// Check if a file extension is an archive unar can handle.
