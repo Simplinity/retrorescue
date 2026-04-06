@@ -1,8 +1,17 @@
 import SwiftUI
+import ContainerCracker
 
 @main
 struct RetroRescueApp: App {
     @StateObject private var state = VaultState()
+
+    init() {
+        // Configure tools from ToolChain
+        let tc = ToolChain.shared
+        if let unarPath = tc.unar {
+            UnarExtractor.overridePath = unarPath
+        }
+    }
 
     var body: some Scene {
         WindowGroup {

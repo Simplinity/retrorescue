@@ -11,12 +11,17 @@ public enum UnarExtractor {
     }
 
     /// Find the unar binary path.
+    /// Override path for unar binary. Set by the app's ToolChain.
+    public static var overridePath: String?
+
     public static func unarPath() -> String? {
+        if let override = overridePath { return override }
         let candidates = [
+            Bundle.main.resourcePath.map { "\($0)/unar" },
             "/opt/homebrew/bin/unar",
             "/usr/local/bin/unar",
             "/usr/bin/unar",
-        ]
+        ].compactMap { $0 }
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
