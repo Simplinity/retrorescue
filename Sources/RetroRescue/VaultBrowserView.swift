@@ -68,6 +68,12 @@ struct VaultBrowserView: View {
                     archiveInfoSection(entry)
                         .padding()
 
+                    // Extract prompt for unextracted archives
+                    if state.selectedIsArchive && !state.selectedHasExtracted {
+                        extractPromptCard(entry)
+                            .padding(.horizontal)
+                    }
+
                     if state.selectedHasExtracted {
                         Divider()
                         // Extracted file browser (takes remaining space)
@@ -134,11 +140,52 @@ struct VaultBrowserView: View {
                 Text("\(state.extractedEntries.count) extracted files")
                     .font(.caption)
                     .foregroundStyle(.green)
-            } else if state.selectedIsArchive {
-                Text("Right-click to extract contents")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Card prompting the user to extract an archive.
+    private func extractPromptCard(_ entry: VaultEntry) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "archivebox")
+                .font(.system(size: 28))
+                .foregroundStyle(.orange)
+
+            Text("This is a \(archiveTypeLabel(entry.name))")
+                .font(.headline)
+
+            Text("Extract its contents to browse the files inside.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Button {
+                state.extractSelected()
+            } label: {
+                Label("Extract Contents", systemImage: "archivebox.fill")
+                    .frame(minWidth: 160)
+            }
+            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(.quaternary.opacity(0.3))
+        .cornerRadius(12)
+    }
+
+    private func archiveTypeLabel(_ name: String) -> String {
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "sit": return "StuffIt archive"
+        case "sea": return "self-extracting StuffIt archive"
+        case "cpt": return "Compact Pro archive"
+        case "7z": return "7-Zip archive"
+        case "rar": return "RAR archive"
+        case "zip": return "ZIP archive"
+        case "gz", "tar": return "compressed archive"
+        case "dd": return "DiskDoubler archive"
+        default: return "compressed archive"
         }
     }
 
