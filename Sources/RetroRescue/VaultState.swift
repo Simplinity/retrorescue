@@ -34,6 +34,7 @@ final class VaultState: ObservableObject {
     func createVault(at url: URL) {
         do {
             vault = try Vault.create(at: url)
+            VaultLibrary.shared.register(url: url)
             refreshEntries()
         } catch {
             self.error = error.localizedDescription
@@ -43,6 +44,7 @@ final class VaultState: ObservableObject {
     func openVault(at url: URL) {
         do {
             vault = try Vault.open(at: url)
+            VaultLibrary.shared.register(url: url)
             refreshEntries()
         } catch {
             self.error = error.localizedDescription
