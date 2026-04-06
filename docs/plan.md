@@ -1034,3 +1034,341 @@ Stage 13: Advanced features (independent, any time after Stage 8)
 | **v1.1** | 9-10 | Font converter, ClarisWorks converter, web drag & drop |
 | **v1.2** | 11 | Disk image writer, emulator bridge |
 | **v2.0** | 12-13 | App Store, website, advanced features |
+
+---
+
+## Testing Strategy
+
+### Approach
+- **Unit tests** for all parsers and VaultEngine (deterministic, no UI, fast)
+- **Test fixtures** in `Tests/Fixtures/` — real sample files committed to the repo
+- **No UI tests** — same choice as RetroGate; UI is tested manually per stage
+- **Every stage adds tests** — no code merges without passing `swift test`
+
+### Test Fixtures Needed
+
+```
+Tests/Fixtures/
+├── macbinary/
+│   ├── simple.bin              (MacBinary II, TEXT/ttxt, small data fork, no rsrc)
+│   ├── with_rsrc.bin           (MacBinary II, has both data + resource fork)
+│   └── macbinary3.bin          (MacBinary III with CRC-16)
+├── binhex/
+│   ├── simple.hqx              (BinHex 4.0 encoded TEXT file)
+│   └── with_rsrc.hqx           (BinHex with resource fork)
+├── appledouble/
+│   ├── ._sample                (AppleDouble file with resource fork + Finder info)
+│   └── sample.as               (AppleSingle file)
+├── rsrc/
+│   ├── simple.rsrc             (resource fork with ICON, STR, vers)
+│   ├── icons.rsrc              (ICN#, icl4, icl8, ics#, ics4, ics8)
+│   ├── sounds.rsrc             (snd resources, 8-bit mono)
+│   ├── pict.rsrc               (PICT v1 and v2 resources)
+│   └── fonts.rsrc              (FONT, NFNT, FOND resources)
+├── hfs/
+│   ├── floppy800k.dsk          (800K HFS floppy image, few files)
+│   ├── floppy1440k.dsk         (1.4MB HFS floppy image)
+│   └── diskcopy42.img          (DiskCopy 4.2 format with header)
+├── archives/
+│   ├── sample.sit              (StuffIt archive with 2-3 files)
+│   └── sample.cpt              (Compact Pro archive)
+├── documents/
+│   ├── macwrite.mw             (MacWrite II document)
+│   └── clarisworks.cwk         (ClarisWorks 4.0 word processing)
+└── media/
+    ├── macpaint.pntg            (MacPaint 576×720 1-bit image)
+    ├── sample.pict              (standalone PICT file)
+    └── quicktime_cinepak.mov    (legacy QuickTime, Cinepak codec)
+```
+
+These will be sourced from public domain / freely available vintage Mac files, or hand-crafted with known content so assertions are deterministic.
+
+### Tests Per Stage
+
+**Stage 1 — VaultEngine (target: ~15 tests)**
+
+```
+VaultCreateTests
+├── testCreateNewVault            — creates bundle, sqlite, manifest exist
+├── testCreateVaultAtExistingPath — throws error
+├── testOpenVault                 — opens previously created vault
+├── testOpenInvalidPath           — throws error
+└── testManifestContent           — version, created date, app version correct
+
+VaultEntryTests
+├── testAddFile                   — adds file, data fork readable back
+├── testAddFileWithRsrc           — data + rsrc forks both stored and readable
+├── testAddDirectory              — creates folder entry, parentID correct
+├── testNestedDirectories         — parent-child relationships preserved
+├── testListRootEntries           — lists only root-level items
+├── testListChildEntries          — lists children of a specific folder
+├── testDeleteEntry               — removes from DB and disk
+├── testSearchByName              — FTS5 search finds file by name fragment
+├── testChecksums                 — SHA-256 matches stored value
+└── testMetaJsonConsistency       — meta.json matches DB row for every entry
+```
+
+**Stage 2 — MacBinary & BinHex parsers (target: ~12 tests)**
+
+```
+MacBinaryParserTests
+├── testDetectMacBinaryII         — correctly identifies MacBinary II
+├── testDetectMacBinaryIII        — correctly identifies MacBinary III
+├── testRejectNonMacBinary        — random data returns nil
+├── testParseSimple               — extracts filename, type, creator, data fork
+├── testParseWithResourceFork     — data + rsrc forks correct size and content
+├── testMacDateConversion         — 1904-epoch date converts to correct Date
+└── testCRC16Validation           — MacBinary III CRC check passes/fails correctly
+
+BinHexParserTests
+├── testDetectBinHex              — recognizes "(This file must be converted" header
+├── testRejectNonBinHex           — random text returns nil
+├── testDecode                    — decodes known .hqx to correct data/rsrc/metadata
+├── testRunLengthDecoding         — RLE sequences expand correctly
+└── testAppleSingleParse          — parses AppleSingle header and entries
+```
+
+**Stage 3 — Archive extraction (target: ~8 tests)**
+
+```
+ArchiveExtractorTests
+├── testUnarAvailability          — detects unar binary on system
+├── testExtractStuffIt            — extracts .sit, correct file count
+├── testExtractCompactPro         — extracts .cpt, correct file count
+├── testExtractedMetadata         — resource forks + type/creator preserved via AppleDouble
+├── testNestedArchiveDetection    — detects .bin inside .sit
+├── testSourcePreservation        — original archive copied to sources/
+├── testUnarMissing               — graceful error when unar not installed
+└── testFormatDetection           — ContainerCracker routes .sit/.cpt/.hqx to correct handler
+```
+
+**Stage 4 — HFS disk images (target: ~10 tests)**
+
+```
+DiskImageTests
+├── testDetectRawHFS              — magic bytes 0x4244 at offset 1024
+├── testDetectDiskCopy42          — DiskCopy 4.2 header parsed correctly
+├── testStripDiskCopy42Header     — 84-byte header removed, raw HFS data correct
+├── testDetectAPM                 — Apple Partition Map found at block 1
+├── testAPMFindHFSPartition       — locates Apple_HFS partition in multi-partition image
+
+HFSVolumeTests
+├── testReadFloppy800K            — reads file tree from 800K image
+├── testReadFloppy1440K           — reads file tree from 1.4MB image
+├── testFileMetadata              — type/creator, dates, fork sizes correct
+├── testResourceForkExtraction    — rsrc fork bytes match known content
+└── testDirectoryStructure        — nested folders reconstructed correctly
+```
+
+**Stage 5 — Resource fork parser (target: ~10 tests)**
+
+```
+ResourceForkParserTests
+├── testParseHeader               — data offset, map offset, lengths correct
+├── testParseTypeList             — correct type count and type codes
+├── testParseResourceList         — correct ID, name, attributes per resource
+├── testExtractResourceData       — raw bytes match known content
+├── testEmptyResourceFork         — zero resources parsed without crash
+├── testCompressedResource        — System 7 compressed resource decompressed
+├── testKnownTypeRegistry         — "ICON" → "Icon (32×32, 1-bit)" lookup works
+├── testMultipleTypes             — fork with 5+ types parsed correctly
+├── testResourceNames             — named resources return correct names
+└── testLargeResourceFork         — 100+ resources parsed without issues
+```
+
+**Stage 6 — Preview engine (target: ~10 tests)**
+
+```
+PICTPreviewTests
+├── testPICTtoImage               — PICT data converts to CGImage (via sips)
+├── testPICTv1                    — version 1 PICT renders correctly
+└── testInvalidPICT               — graceful fallback to hex dump
+
+IconPreviewTests
+├── testICON32x32                 — 128 bytes → 32×32 1-bit image
+├── testICN_with_mask             — icon + mask applied correctly
+├── testicl8_256color             — 8-bit indexed color rendered
+
+SoundPreviewTests
+├── testSndToWAV                  — snd resource → valid WAV header + PCM data
+└── testSndSampleRate             — sample rate extracted correctly
+
+TextPreviewTests
+├── testMacRomanToUTF8            — "caf\x8E" → "café" (MacRoman 0x8E = é)
+└── testLineEndingConversion      — \r → \n
+```
+
+**Stage 7 — Conversion engine (target: ~12 tests)**
+
+```
+ConverterRegistryTests
+├── testConverterForPICT          — PICTConverter selected for type "PICT"
+├── testConverterForSound         — SoundConverter selected for resource type "snd "
+├── testConverterForText          — TextConverter selected for type "TEXT"
+├── testNoConverterForUnknown     — nil returned for unknown type
+└── testMultipleOutputFormats     — PICTConverter offers PNG and JPEG
+
+PICTConverterTests
+├── testConvertToPNG              — valid PNG output, correct dimensions
+└── testConvertToJPEG             — valid JPEG output
+
+IconConverterTests
+├── testICONtoPNG                 — 32×32 PNG, correct pixels
+└── testICONtoICO                 — valid .ico file header
+
+SoundConverterTests
+├── testSndToWAV                  — valid WAV, correct duration
+└── testSndToAIFF                 — valid AIFF output
+
+BatchExportTests
+├── testExportFolder              — all files in folder converted and written
+└── testExportPreservesStructure  — subfolder hierarchy recreated in output
+```
+
+**Stage 8 — Thumbnails & search (target: ~6 tests)**
+
+```
+ThumbnailTests
+├── testGeneratePICTThumbnail     — 128×128 PNG generated from PICT
+├── testGenerateIconThumbnail     — thumbnail from largest icon variant
+└── testThumbnailStoredOnDisk     — file exists at thumbnails/{id}.png
+
+SearchTests
+├── testSearchByName              — finds "ReadMe" by partial match "read"
+├── testSearchByTypecode          — filter by type_code = "TEXT" works
+└── testSearchEmptyResult         — no crash, empty array returned
+```
+
+**Stage 9 — Advanced converters (target: ~8 tests)**
+
+```
+FontConverterTests
+├── testParseFONDResource         — font family info extracted correctly
+├── testParseNFNTBitmap           — glyph bitmaps extracted, correct dimensions
+├── testExportBDF                 — valid BDF file output
+└── testGlyphCount                — correct number of glyphs (first char to last char)
+
+QuickTimeConverterTests
+├── testFfmpegAvailability        — detects ffmpeg binary
+├── testTranscodeCinepak          — Cinepak .mov → H.264 .mp4
+└── testFfmpegMissing             — graceful error when ffmpeg not installed
+
+DocumentConverterTests
+└── testClarisWorksTextExtract    — raw text extracted from known .cwk file
+```
+
+**Stage 10 — Web drag & drop (target: ~4 tests)**
+
+```
+URLImportTests
+├── testDetectURL                 — URL pasteboard type recognized
+├── testContentDisposition        — filename parsed from HTTP header
+├── testDownloadAndExtract        — URL → download → crack → vault (integration)
+└── testInvalidURL                — graceful error on 404
+```
+
+**Stage 11 — Vault-to-emulator bridge (target: ~6 tests)**
+
+```
+HFSWriterTests
+├── testCreateFloppyImage         — 1.4MB .dsk created, valid HFS signature
+├── testFileInImage               — written file readable back via HFS parser
+├── testResourceForkInImage       — rsrc fork preserved in HFS image
+├── testVolumeNameSet             — custom volume name stored correctly
+├── testAppleDoubleExport         — data fork + ._ file pair created
+└── testAppleDoubleRoundTrip      — vault → AppleDouble → vault = identical
+```
+
+### Test Count Summary
+
+| Stage | Suite(s) | Tests | Cumulative |
+|-------|----------|-------|------------|
+| 1 | VaultCreateTests, VaultEntryTests | 15 | 15 |
+| 2 | MacBinaryParserTests, BinHexParserTests | 12 | 27 |
+| 3 | ArchiveExtractorTests | 8 | 35 |
+| 4 | DiskImageTests, HFSVolumeTests | 10 | 45 |
+| 5 | ResourceForkParserTests | 10 | 55 |
+| 6 | PICTPreviewTests, IconPreviewTests, SoundPreviewTests, TextPreviewTests | 10 | 65 |
+| 7 | ConverterRegistryTests, PICTConverterTests, IconConverterTests, SoundConverterTests, BatchExportTests | 12 | 77 |
+| 8 | ThumbnailTests, SearchTests | 6 | 83 |
+| 9 | FontConverterTests, QuickTimeConverterTests, DocumentConverterTests | 8 | 91 |
+| 10 | URLImportTests | 4 | 95 |
+| 11 | HFSWriterTests | 6 | 101 |
+
+**Target: ~100 tests across ~20 suites by Stage 11.**
+
+### Test Fixture Sourcing Strategy
+
+- **Hand-crafted fixtures** (preferred): create minimal MacBinary, BinHex, resource fork files with known content using Python scripts. This guarantees deterministic assertions and avoids copyright issues.
+- **Public domain sources**: Apple system software (freely distributed), public domain clip art, self-authored test content.
+- **Fixture generator script**: `Tests/generate_fixtures.py` — a Python script that creates all test fixtures from scratch using `machfs`, `macresources`, and struct packing. Run once, commit the output. Reproducible.
+
+### UI & Integration Testing
+
+In addition to the unit tests listed above, each stage that adds UI gets **ViewModel tests** and **integration tests**.
+
+**ViewModel tests** verify the logic behind the UI without rendering any views:
+
+```
+Stage 1:
+VaultBrowserViewModelTests
+├── testInitialStateEmpty         — new vault shows empty file list
+├── testAddFilesUpdatesState      — after addFiles(), entries appear in state
+├── testSelectEntry               — selecting an entry updates selectedEntry
+├── testBreadcrumbNavigation      — entering a folder updates breadcrumb path
+└── testDeleteUpdatesState        — after delete, entry removed from state
+
+Stage 3:
+ImportViewModelTests
+├── testDropSITShowsProgress      — dropping .sit sets isImporting = true
+├── testImportCompletionCount     — after import, fileCount matches extracted files
+├── testImportErrorState          — unar failure sets error message in state
+└── testNestedArchivePrompt       — nested archive detected → showNestedPrompt = true
+
+Stage 6:
+PreviewViewModelTests
+├── testPICTShowsImagePreview     — selecting PICT file sets previewType = .image
+├── testSndShowsAudioPreview      — selecting snd resource sets previewType = .audio
+├── testTextShowsTextPreview      — selecting TEXT file sets previewType = .text
+├── testUnknownShowsHexDump       — selecting unknown type sets previewType = .hex
+└── testPreviewLoadingState       — preview starts in .loading, transitions to .ready
+
+Stage 7:
+ExportViewModelTests
+├── testExportSelectionCount      — selecting 5 files shows "5 files selected"
+├── testExportFormatDefaults      — PICT defaults to PNG, snd defaults to WAV
+├── testBatchExportProgress       — progress updates during batch export
+└── testExportSummary             — after export, summary shows correct counts
+```
+
+**Integration tests** verify complete end-to-end workflows without UI:
+
+```
+VaultIntegrationTests
+├── testCreateImportBrowseExport  — full lifecycle: create vault → import .sit
+│                                   → verify entries → export as PNG/WAV → verify output files
+├── testHFSImportToVault          — HFS disk image → vault → entries match original disk
+├── testMacBinaryRoundTrip        — MacBinary → vault → restore with resource fork → compare bytes
+├── testVaultSurvivesZipCycle     — create vault → zip → unzip → open → all data intact
+├── testVaultSurvivesCopy         — create vault → cp -r to FAT32 volume → open → all data intact
+├── testRebuildFromMetaJson       — delete vault.sqlite → open vault → DB rebuilt from meta.json files
+└── testLargeImport               — import disk image with 500+ files → no crashes, correct count
+```
+
+**Updated test count summary:**
+
+| Stage | Unit tests | ViewModel tests | Integration tests | Cumulative |
+|-------|-----------|-----------------|-------------------|------------|
+| 1 | 15 | 5 | 2 | 22 |
+| 2 | 12 | — | 1 | 35 |
+| 3 | 8 | 4 | 1 | 48 |
+| 4 | 10 | — | 1 | 59 |
+| 5 | 10 | — | — | 69 |
+| 6 | 10 | 5 | — | 84 |
+| 7 | 12 | 4 | 1 | 101 |
+| 8 | 6 | — | — | 107 |
+| 9 | 8 | — | — | 115 |
+| 10 | 4 | — | — | 119 |
+| 11 | 6 | — | 1 | 126 |
+
+**Target: ~125 tests across ~25 suites by Stage 11.**
