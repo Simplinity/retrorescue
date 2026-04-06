@@ -39,18 +39,17 @@ struct ExtractedFileRow: View {
             }
 
             if node.isExtractable {
-                Button {
+                Image(systemName: "archivebox")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .contextMenu {
+            if node.isExtractable {
+                Button("Extract Contents") {
                     onExtract?(node.entry.id)
                     node.reloadChildren()
-                } label: {
-                    Text("Extract")
-                        .font(.caption)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.blue.opacity(0.1))
-                        .cornerRadius(4)
                 }
-                .buttonStyle(.plain)
             }
         }
     }

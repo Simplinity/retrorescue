@@ -34,6 +34,19 @@ struct VaultBrowserView: View {
                     }
                 )) { entry in
                     FileRowView(entry: entry)
+                        .contextMenu {
+                            if VaultState.isExtractable(entry.name) {
+                                Button("Extract Contents") {
+                                    state.select(entry)
+                                    state.extractSelected()
+                                }
+                            }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                state.select(entry)
+                                state.deleteSelected()
+                            }
+                        }
                 }
             }
             statusBar
@@ -66,15 +79,6 @@ struct VaultBrowserView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         // Archive info section
                         archiveInfoSection(entry)
-
-                        // Extract button
-                        if state.selectedIsArchive && !state.selectedHasExtracted {
-                            Divider()
-                            Button("Extract Contents") {
-                                state.extractSelected()
-                            }
-                            .controlSize(.large)
-                        }
 
                         // Extracted file browser
                         if state.selectedHasExtracted {
@@ -142,6 +146,10 @@ struct VaultBrowserView: View {
                 Text("\(state.extractedEntries.count) extracted files")
                     .font(.caption)
                     .foregroundStyle(.green)
+            } else if state.selectedIsArchive {
+                Text("Right-click to extract contents")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
