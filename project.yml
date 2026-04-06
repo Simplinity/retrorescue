@@ -61,7 +61,7 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: "0.1.0"
         GENERATE_INFOPLIST_FILE: NO
-        ENABLE_APP_SANDBOX: YES
+        ENABLE_APP_SANDBOX: NO
       configs:
         Release:
           SWIFT_OPTIMIZATION_LEVEL: -O

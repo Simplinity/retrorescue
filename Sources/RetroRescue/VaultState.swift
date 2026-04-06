@@ -2,27 +2,37 @@ import SwiftUI
 import VaultEngine
 import ContainerCracker
 
-/// Observable state managing the currently open vault.
 @MainActor
 final class VaultState: ObservableObject {
     @Published var vault: Vault?
-    @Published var entries: [VaultEntry] = []
+    @Published var entries: [VaultEntry] = []           // top-level vault items
     @Published var selectedEntry: VaultEntry?
-    @Published var currentParentID: String?
-    @Published var breadcrumb: [(id: String?, name: String)] = []
+    @Published var extractedEntries: [VaultEntry] = []  // children of selected archive
     @Published var error: String?
     @Published var isImporting = false
 
     var isOpen: Bool { vault != nil }
+
     var vaultName: String {
         vault?.url.deletingPathExtension().lastPathComponent ?? "RetroRescue"
     }
 
+    /// Is the selected entry an archive we can extract?
+    var selectedIsArchive: Bool {
+        guard let entry = selectedEntry, !entry.isDirectory else { return false }
+        return UnarExtractor.canHandle(filename: entry.name)
+    }
+
+    /// Does the selected entry have extracted children?
+    var selectedHasExtracted: Bool {
+        !extractedEntries.isEmpty
+    }
+
+    // MARK: - Vault lifecycle
+
     func createVault(at url: URL) {
         do {
             vault = try Vault.create(at: url)
-            currentParentID = nil
-            breadcrumb = [(nil, vaultName)]
             refreshEntries()
         } catch {
             self.error = error.localizedDescription
@@ -32,8 +42,6 @@ final class VaultState: ObservableObject {
     func openVault(at url: URL) {
         do {
             vault = try Vault.open(at: url)
-            currentParentID = nil
-            breadcrumb = [(nil, vaultName)]
             refreshEntries()
         } catch {
             self.error = error.localizedDescription
@@ -44,34 +52,45 @@ final class VaultState: ObservableObject {
         vault = nil
         entries = []
         selectedEntry = nil
-        currentParentID = nil
-        breadcrumb = []
+        extractedEntries = []
     }
 
     func refreshEntries() {
         guard let vault else { return }
         do {
-            entries = try vault.entries(parentID: currentParentID)
+            // Only show root-level entries (no parentID)
+            entries = try vault.entries(parentID: nil)
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    func navigateInto(_ entry: VaultEntry) {
-        guard entry.isDirectory else { return }
-        currentParentID = entry.id
-        breadcrumb.append((entry.id, entry.name))
-        selectedEntry = nil
-        refreshEntries()
+    // MARK: - Selection
+
+    func select(_ entry: VaultEntry?) {
+        selectedEntry = entry
+        loadExtractedEntries()
     }
 
-    func navigateUp() {
-        guard breadcrumb.count > 1 else { return }
-        breadcrumb.removeLast()
-        currentParentID = breadcrumb.last?.id
-        selectedEntry = nil
-        refreshEntries()
+    private func loadExtractedEntries() {
+        guard let vault, let entry = selectedEntry else {
+            extractedEntries = []
+            return
+        }
+        do {
+            extractedEntries = try vault.entries(parentID: entry.id)
+        } catch {
+            extractedEntries = []
+        }
     }
+
+    /// Load children of a specific entry (for tree expansion in right panel).
+    func children(of parentID: String) -> [VaultEntry] {
+        guard let vault else { return [] }
+        return (try? vault.entries(parentID: parentID)) ?? []
+    }
+
+    // MARK: - Add files
 
     func addFiles(urls: [URL]) {
         guard let vault else { return }
@@ -83,54 +102,26 @@ final class VaultState: ObservableObject {
                 let data = try Data(contentsOf: url)
                 let filename = url.lastPathComponent
 
-                // 1. Try single-file wrapper (MacBinary, BinHex, AppleDouble)
-                let singleFile = try? ContainerCracker.extract(data: data, filename: filename)
-                if let extracted = singleFile {
+                // Unwrap encoding wrappers (MacBinary, BinHex)
+                if let unwrapped = try? ContainerCracker.extract(data: data, filename: filename) {
                     try vault.addFile(
-                        name: extracted.name,
-                        data: extracted.dataFork,
-                        rsrc: extracted.rsrcFork.isEmpty ? nil : extracted.rsrcFork,
-                        typeCode: extracted.typeCode,
-                        creatorCode: extracted.creatorCode,
-                        finderFlags: extracted.finderFlags,
-                        created: extracted.created,
-                        modified: extracted.modified,
-                        parentID: currentParentID
+                        name: unwrapped.name,
+                        data: unwrapped.dataFork,
+                        rsrc: unwrapped.rsrcFork.isEmpty ? nil : unwrapped.rsrcFork,
+                        typeCode: unwrapped.typeCode,
+                        creatorCode: unwrapped.creatorCode,
+                        finderFlags: unwrapped.finderFlags,
+                        created: unwrapped.created,
+                        modified: unwrapped.modified
                     )
-                    continue
+                } else {
+                    // Store as-is
+                    let rsrc: Data? = {
+                        let rsrcURL = url.appendingPathComponent("..namedfork/rsrc")
+                        return try? Data(contentsOf: rsrcURL)
+                    }()
+                    try vault.addFile(name: filename, data: data, rsrc: rsrc)
                 }
-
-                // 2. Try archive extraction (StuffIt, Compact Pro, ZIP, etc.)
-                if let archiveFiles = try? ContainerCracker.extractArchive(url: url),
-                   !archiveFiles.isEmpty {
-                    for file in archiveFiles {
-                        try vault.addFile(
-                            name: file.name,
-                            data: file.dataFork,
-                            rsrc: file.rsrcFork.isEmpty ? nil : file.rsrcFork,
-                            typeCode: file.typeCode,
-                            creatorCode: file.creatorCode,
-                            finderFlags: file.finderFlags,
-                            created: file.created,
-                            modified: file.modified,
-                            sourceArchive: filename,
-                            parentID: currentParentID
-                        )
-                    }
-                    continue
-                }
-
-                // 3. Raw file — no container detected
-                let rsrc: Data? = {
-                    let rsrcURL = url.appendingPathComponent("..namedfork/rsrc")
-                    return try? Data(contentsOf: rsrcURL)
-                }()
-                try vault.addFile(
-                    name: filename,
-                    data: data,
-                    rsrc: rsrc,
-                    parentID: currentParentID
-                )
             } catch {
                 self.error = "Failed to add \(url.lastPathComponent): \(error.localizedDescription)"
             }
@@ -138,14 +129,61 @@ final class VaultState: ObservableObject {
         refreshEntries()
     }
 
+    // MARK: - Delete
+
     func deleteSelected() {
         guard let vault, let entry = selectedEntry else { return }
         do {
+            // Delete extracted children first
+            for child in extractedEntries {
+                try vault.delete(id: child.id)
+            }
             try vault.delete(id: entry.id)
             selectedEntry = nil
+            extractedEntries = []
             refreshEntries()
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    // MARK: - Extract archive
+
+    func extractSelected() {
+        guard let vault, let entry = selectedEntry else { return }
+        isImporting = true
+        defer { isImporting = false }
+
+        do {
+            let archiveData = try vault.dataFork(for: entry.id)
+            let tempFile = FileManager.default.temporaryDirectory
+                .appendingPathComponent(entry.name)
+            try archiveData.write(to: tempFile)
+            defer { try? FileManager.default.removeItem(at: tempFile) }
+
+            let extracted = try UnarExtractor.extract(archiveURL: tempFile)
+            guard !extracted.isEmpty else {
+                self.error = "Archive appears to be empty"
+                return
+            }
+
+            // Store extracted files as children of the archive
+            for file in extracted {
+                try vault.addFile(
+                    name: file.name,
+                    data: file.dataFork,
+                    rsrc: file.rsrcFork.isEmpty ? nil : file.rsrcFork,
+                    typeCode: file.typeCode,
+                    creatorCode: file.creatorCode,
+                    finderFlags: file.finderFlags,
+                    sourceArchive: entry.name,
+                    parentID: entry.id
+                )
+            }
+
+            loadExtractedEntries()
+        } catch {
+            self.error = "Extract failed: \(error.localizedDescription)"
         }
     }
 }
