@@ -141,16 +141,25 @@ final class VaultState: ObservableObject {
     func deleteSelected() {
         guard let vault, let entry = selectedEntry else { return }
         do {
-            // Delete extracted children first
-            for child in extractedEntries {
-                try vault.delete(id: child.id)
-            }
+            // Recursively delete all descendants first
+            try deleteDescendants(of: entry.id)
             try vault.delete(id: entry.id)
             selectedEntry = nil
             extractedEntries = []
+            extractedTree = []
             refreshEntries()
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Recursively delete all children and their children.
+    private func deleteDescendants(of parentID: String) throws {
+        guard let vault else { return }
+        let kids = try vault.entries(parentID: parentID)
+        for child in kids {
+            try deleteDescendants(of: child.id)
+            try vault.delete(id: child.id)
         }
     }
 
