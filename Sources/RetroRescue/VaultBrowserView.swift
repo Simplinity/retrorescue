@@ -76,8 +76,12 @@ struct VaultBrowserView: View {
 
                     if state.selectedHasExtracted {
                         Divider()
-                        // Extracted file browser (takes remaining space)
                         extractedFilesSection
+
+                        if let previewing = state.previewingEntry {
+                            Divider()
+                            filePreviewSection(previewing)
+                        }
                     }
 
                     Spacer(minLength: 0)
@@ -193,6 +197,12 @@ struct VaultBrowserView: View {
         List(state.extractedTree, children: \.children) { node in
             ExtractedFileRow(node: node) { entryID in
                 state.extractEntry(id: entryID)
+            } onQuickLook: { entry in
+                state.quickLook(entry)
+            } onOpen: { entry in
+                state.openInDefaultApp(entry)
+            } onPreview: { entry in
+                state.previewFile(entry)
             } onMessage: { msg in
                 state.error = msg
             }
@@ -236,8 +246,11 @@ struct VaultBrowserView: View {
         let isArchive = VaultState.isExtractable(entry.name)
         let isExtracted = state.isAlreadyExtracted(id: entry.id)
 
-        Button { showNotImplemented("Quick Look") } label: {
+        Button { state.quickLook(entry) } label: {
             Label("Quick Look", systemImage: "eye")
+        }
+        Button { state.openInDefaultApp(entry) } label: {
+            Label("Open", systemImage: "arrow.up.forward.app")
         }
         Button { showNotImplemented("Get Info") } label: {
             Label("Get Info", systemImage: "info.circle")
@@ -277,6 +290,46 @@ struct VaultBrowserView: View {
 
     private func showNotImplemented(_ feature: String) {
         state.error = "\(feature) is coming in a future version."
+    }
+
+    // MARK: - File Preview
+
+    private func filePreviewSection(_ entry: VaultEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(entry.name, systemImage: "doc.text.magnifyingglass")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    state.previewingEntry = nil
+                    state.previewText = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            if let text = state.previewText {
+                ScrollView {
+                    Text(text)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                }
+                .frame(minHeight: 150, maxHeight: 300)
+            } else {
+                Text("No text preview available. Use Quick Look or Open for this file type.")
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+            }
+        }
+        .background(.quaternary.opacity(0.2))
+        .cornerRadius(8)
+        .padding(.horizontal)
     }
 
     // MARK: - Actions

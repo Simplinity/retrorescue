@@ -9,6 +9,8 @@ final class VaultState: ObservableObject {
     @Published var selectedEntry: VaultEntry?
     @Published var extractedEntries: [VaultEntry] = []  // children of selected archive
     @Published var extractedTree: [FileTreeNode] = []   // tree nodes for outline view
+    @Published var previewingEntry: VaultEntry?          // file being previewed in right panel
+    @Published var previewText: String?                  // text content for inline preview
     @Published var error: String?
     @Published var isImporting = false
 
@@ -168,6 +170,40 @@ final class VaultState: ObservableObject {
     /// Check if a file is extractable (archive, disk image, etc.)
     static func isExtractable(_ name: String) -> Bool {
         UnarExtractor.canHandle(filename: name)
+    }
+
+    // MARK: - Preview & Open
+
+    /// Preview a file from the extracted tree.
+    func previewFile(_ entry: VaultEntry) {
+        previewingEntry = entry
+        if FilePreviewHelper.isTextPreviewable(entry: entry), let vault {
+            previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
+        } else {
+            previewText = nil
+        }
+    }
+
+    /// Quick Look a file using macOS Quick Look.
+    func quickLook(_ entry: VaultEntry) {
+        guard let vault else { return }
+        guard let url = try? FilePreviewHelper.writeTempFile(vault: vault, entry: entry) else {
+            self.error = "Could not write temp file for preview"
+            return
+        }
+        // Use qlmanage for Quick Look preview
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/qlmanage")
+        process.arguments = ["-p", url.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+    }
+
+    /// Open a file in the default macOS app.
+    func openInDefaultApp(_ entry: VaultEntry) {
+        guard let vault else { return }
+        FilePreviewHelper.openInDefaultApp(vault: vault, entry: entry)
     }
 
     /// Check if an entry has already been extracted.

@@ -7,6 +7,9 @@ import ContainerCracker
 struct ExtractedFileRow: View {
     @ObservedObject var node: FileTreeNode
     var onExtract: ((String) -> Void)?
+    var onQuickLook: ((VaultEntry) -> Void)?
+    var onOpen: ((VaultEntry) -> Void)?
+    var onPreview: ((VaultEntry) -> Void)?
     var onMessage: ((String) -> Void)?
 
     var body: some View {
@@ -46,11 +49,16 @@ struct ExtractedFileRow: View {
             }
         }
         .contextMenu {
-            Button { showNotImplemented("Quick Look") } label: {
-                Label("Quick Look", systemImage: "eye")
-            }
-            Button { showNotImplemented("Get Info") } label: {
-                Label("Get Info", systemImage: "info.circle")
+            if !node.entry.isDirectory {
+                Button { onQuickLook?(node.entry) } label: {
+                    Label("Quick Look", systemImage: "eye")
+                }
+                Button { onOpen?(node.entry) } label: {
+                    Label("Open", systemImage: "arrow.up.forward.app")
+                }
+                Button { onPreview?(node.entry) } label: {
+                    Label("Preview", systemImage: "doc.text.magnifyingglass")
+                }
             }
 
             Divider()
@@ -64,14 +72,13 @@ struct ExtractedFileRow: View {
                 }
             }
 
-            Button { showNotImplemented("Export") } label: {
-                Label("Export to Finder…", systemImage: "square.and.arrow.up")
-            }
-            Button { showNotImplemented("Convert to Modern Format") } label: {
-                Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
-            }
-            Button { showNotImplemented("Copy") } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+            if !node.entry.isDirectory {
+                Button { showNotImplemented("Export") } label: {
+                    Label("Export to Finder…", systemImage: "square.and.arrow.up")
+                }
+                Button { showNotImplemented("Convert") } label: {
+                    Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
+                }
             }
 
             Divider()
