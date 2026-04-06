@@ -250,6 +250,12 @@ struct VaultBrowserView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button { state.closeVault() } label: {
+                Label("Close Vault", systemImage: "chevron.left")
+            }
+            .help("Close vault and return to library")
+        }
         ToolbarItem(placement: .primaryAction) {
             Button { addFilesPanel() } label: {
                 Label("Add Files", systemImage: "plus")
