@@ -67,9 +67,10 @@ struct VaultBrowserView: View {
                     VSplitView {
                         ScrollView {
                             archiveInfoSection(entry)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding()
                         }
-                        .frame(minHeight: 80, idealHeight: 120, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 80, idealHeight: 120, maxHeight: .infinity)
 
                         VStack(spacing: 0) {
                             extractedFilesSection
@@ -79,7 +80,7 @@ struct VaultBrowserView: View {
                                 filePreviewSection(previewing)
                             }
                         }
-                        .frame(minHeight: 150, idealHeight: 400, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 150, idealHeight: 400, maxHeight: .infinity)
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 0) {
