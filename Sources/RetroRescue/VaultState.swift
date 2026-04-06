@@ -1,5 +1,6 @@
 import SwiftUI
 import VaultEngine
+import ContainerCracker
 
 /// Observable state managing the currently open vault.
 @MainActor
@@ -80,18 +81,34 @@ final class VaultState: ObservableObject {
         for url in urls {
             do {
                 let data = try Data(contentsOf: url)
-                // Check for resource fork via extended attribute
-                let rsrc: Data? = {
-                    let rsrcURL = url.appendingPathComponent("..namedfork/rsrc")
-                    return try? Data(contentsOf: rsrcURL)
-                }()
+                let filename = url.lastPathComponent
 
-                try vault.addFile(
-                    name: url.lastPathComponent,
-                    data: data,
-                    rsrc: rsrc,
-                    parentID: currentParentID
-                )
+                // Try to detect and unwrap classic Mac containers
+                if let extracted = try ContainerCracker.extract(data: data, filename: filename) {
+                    try vault.addFile(
+                        name: extracted.name,
+                        data: extracted.dataFork,
+                        rsrc: extracted.rsrcFork.isEmpty ? nil : extracted.rsrcFork,
+                        typeCode: extracted.typeCode,
+                        creatorCode: extracted.creatorCode,
+                        finderFlags: extracted.finderFlags,
+                        created: extracted.created,
+                        modified: extracted.modified,
+                        parentID: currentParentID
+                    )
+                } else {
+                    // Not a container — add as raw file
+                    let rsrc: Data? = {
+                        let rsrcURL = url.appendingPathComponent("..namedfork/rsrc")
+                        return try? Data(contentsOf: rsrcURL)
+                    }()
+                    try vault.addFile(
+                        name: filename,
+                        data: data,
+                        rsrc: rsrc,
+                        parentID: currentParentID
+                    )
+                }
             } catch {
                 self.error = "Failed to add \(url.lastPathComponent): \(error.localizedDescription)"
             }

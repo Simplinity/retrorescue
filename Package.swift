@@ -9,6 +9,7 @@ let package = Package(
     products: [
         .executable(name: "RetroRescue", targets: ["RetroRescue"]),
         .library(name: "VaultEngine", targets: ["VaultEngine"]),
+        .library(name: "ContainerCracker", targets: ["ContainerCracker"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
@@ -19,6 +20,7 @@ let package = Package(
             name: "RetroRescue",
             dependencies: [
                 "VaultEngine",
+                "ContainerCracker",
                 .product(name: "Logging", package: "swift-log"),
             ],
             exclude: [
@@ -36,7 +38,22 @@ let package = Package(
                 .linkedLibrary("sqlite3"),
             ]
         ),
+        // Classic Mac format parsers: MacBinary, BinHex, AppleSingle/Double
+        .target(
+            name: "ContainerCracker",
+            dependencies: [
+                "VaultEngine",
+                .product(name: "Logging", package: "swift-log"),
+            ]
+        ),
         // Tests
+        .testTarget(
+            name: "ContainerCrackerTests",
+            dependencies: ["ContainerCracker", "VaultEngine"],
+            resources: [
+                .copy("Fixtures"),
+            ]
+        ),
         .testTarget(
             name: "VaultEngineTests",
             dependencies: ["VaultEngine"],
