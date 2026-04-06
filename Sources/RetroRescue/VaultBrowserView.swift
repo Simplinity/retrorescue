@@ -151,9 +151,13 @@ struct VaultBrowserView: View {
             Text("Extracted Contents")
                 .font(.headline)
 
-            ForEach(state.extractedEntries) { entry in
-                ExtractedFileRow(entry: entry, state: state, depth: 0)
+            List(state.extractedTree, children: \.children) { node in
+                ExtractedFileRow(node: node) { entryID in
+                    state.extractEntry(id: entryID)
+                }
             }
+            .listStyle(.inset(alternatesRowBackgrounds: true))
+            .frame(minHeight: 200)
         }
     }
 

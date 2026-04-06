@@ -8,6 +8,7 @@ final class VaultState: ObservableObject {
     @Published var entries: [VaultEntry] = []           // top-level vault items
     @Published var selectedEntry: VaultEntry?
     @Published var extractedEntries: [VaultEntry] = []  // children of selected archive
+    @Published var extractedTree: [FileTreeNode] = []   // tree nodes for outline view
     @Published var error: String?
     @Published var isImporting = false
 
@@ -53,6 +54,7 @@ final class VaultState: ObservableObject {
         entries = []
         selectedEntry = nil
         extractedEntries = []
+        extractedTree = []
     }
 
     func refreshEntries() {
@@ -75,12 +77,15 @@ final class VaultState: ObservableObject {
     private func loadExtractedEntries() {
         guard let vault, let entry = selectedEntry else {
             extractedEntries = []
+            extractedTree = []
             return
         }
         do {
             extractedEntries = try vault.entries(parentID: entry.id)
+            extractedTree = FileTreeNode.buildTree(parentID: entry.id, vault: vault)
         } catch {
             extractedEntries = []
+            extractedTree = []
         }
     }
 
