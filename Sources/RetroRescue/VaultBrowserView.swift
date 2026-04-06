@@ -34,18 +34,7 @@ struct VaultBrowserView: View {
                     }
                 )) { entry in
                     FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
-                        .contextMenu {
-                            if VaultState.isExtractable(entry.name) && !state.isAlreadyExtracted(id: entry.id) {
-                                Button("Extract Contents") {
-                                    state.select(entry)
-                                    state.extractSelected()
-                                }
-                            }
-                            Button("Delete", role: .destructive) {
-                                state.select(entry)
-                                state.deleteSelected()
-                            }
-                        }
+                        .contextMenu { sidebarContextMenu(for: entry) }
                 }
             }
             statusBar
@@ -157,6 +146,8 @@ struct VaultBrowserView: View {
         List(state.extractedTree, children: \.children) { node in
             ExtractedFileRow(node: node) { entryID in
                 state.extractEntry(id: entryID)
+            } onMessage: { msg in
+                state.error = msg
             }
         }
         .listStyle(.inset(alternatesRowBackgrounds: true))
@@ -189,6 +180,56 @@ struct VaultBrowserView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background(.bar)
+    }
+
+    // MARK: - Context Menus
+
+    @ViewBuilder
+    private func sidebarContextMenu(for entry: VaultEntry) -> some View {
+        let isArchive = VaultState.isExtractable(entry.name)
+        let isExtracted = state.isAlreadyExtracted(id: entry.id)
+
+        Button { showNotImplemented("Quick Look") } label: {
+            Label("Quick Look", systemImage: "eye")
+        }
+        Button { showNotImplemented("Get Info") } label: {
+            Label("Get Info", systemImage: "info.circle")
+        }
+
+        Divider()
+
+        Button {
+            state.select(entry)
+            state.extractSelected()
+        } label: {
+            Label("Extract Contents", systemImage: "archivebox")
+        }
+        .disabled(!isArchive || isExtracted)
+
+        Divider()
+
+        Button { showNotImplemented("Export") } label: {
+            Label("Export to Finder…", systemImage: "square.and.arrow.up")
+        }
+        Button { showNotImplemented("Reveal in Finder") } label: {
+            Label("Reveal in Finder", systemImage: "folder")
+        }
+        Button { showNotImplemented("Convert to Modern Format") } label: {
+            Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            state.select(entry)
+            state.deleteSelected()
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
+    private func showNotImplemented(_ feature: String) {
+        state.error = "\(feature) is coming in a future version."
     }
 
     // MARK: - Actions

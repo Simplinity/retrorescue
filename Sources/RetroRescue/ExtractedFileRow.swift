@@ -7,6 +7,7 @@ import ContainerCracker
 struct ExtractedFileRow: View {
     @ObservedObject var node: FileTreeNode
     var onExtract: ((String) -> Void)?
+    var onMessage: ((String) -> Void)?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -45,13 +46,44 @@ struct ExtractedFileRow: View {
             }
         }
         .contextMenu {
+            Button { showNotImplemented("Quick Look") } label: {
+                Label("Quick Look", systemImage: "eye")
+            }
+            Button { showNotImplemented("Get Info") } label: {
+                Label("Get Info", systemImage: "info.circle")
+            }
+
+            Divider()
+
             if node.isExtractable {
-                Button("Extract Contents") {
+                Button {
                     onExtract?(node.entry.id)
                     node.reloadChildren()
+                } label: {
+                    Label("Extract Contents", systemImage: "archivebox")
                 }
             }
+
+            Button { showNotImplemented("Export") } label: {
+                Label("Export to Finder…", systemImage: "square.and.arrow.up")
+            }
+            Button { showNotImplemented("Convert to Modern Format") } label: {
+                Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
+            }
+            Button { showNotImplemented("Copy") } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+
+            Divider()
+
+            Button(role: .destructive) { showNotImplemented("Delete") } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
+    }
+
+    private func showNotImplemented(_ feature: String) {
+        onMessage?("\(feature) is coming in a future version.")
     }
 
     private var iconName: String {
