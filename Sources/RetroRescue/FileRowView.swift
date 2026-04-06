@@ -62,7 +62,7 @@ struct FileRowView: View {
     }
 
     private var iconColor: Color {
-        if isArchive { return isExtracted ? .green : .orange }
+        if isArchive { return .orange }  // Always orange — it's still an archive
         switch entry.typeCode {
         case "PICT": return .green
         case "APPL": return .purple
