@@ -271,8 +271,30 @@ final class VaultState: ObservableObject {
             defer { try? FileManager.default.removeItem(at: tempFile) }
 
             let extracted: [ExtractedFile]
+
+            // Try unar first (handles most archive/ISO formats)
             if UnarExtractor.canHandle(filename: entry.name) {
-                extracted = try UnarExtractor.extract(archiveURL: tempFile)
+                do {
+                    let unarResult = try UnarExtractor.extract(archiveURL: tempFile)
+                    if !unarResult.isEmpty {
+                        extracted = unarResult
+                    } else {
+                        throw ContainerError.unsupportedFormat("empty")
+                    }
+                } catch {
+                    // unar failed — try HFS extraction as fallback (common for Mac .iso/.toast)
+                    if let hm = ToolChain.shared.hmount,
+                       let hl = ToolChain.shared.hls,
+                       let hc = ToolChain.shared.hcopy,
+                       let hu = ToolChain.shared.humount {
+                        extracted = try HFSExtractor.extract(
+                            imageURL: tempFile,
+                            hmountPath: hm, hlsPath: hl,
+                            hcopyPath: hc, humountPath: hu)
+                    } else {
+                        throw error  // re-throw original unar error
+                    }
+                }
             } else if HFSExtractor.canHandle(filename: entry.name),
                       let hm = ToolChain.shared.hmount,
                       let hl = ToolChain.shared.hls,

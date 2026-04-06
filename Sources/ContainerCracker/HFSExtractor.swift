@@ -13,6 +13,8 @@ public enum HFSExtractor {
         "mar",          // DART (Disk Archive/Retrieval Tool) — DiskCopy 4.2 variant
         "dart",         // DART alternate extension
         "toast",        // Roxio Toast images (sometimes HFS)
+        "iso",          // Many Mac ISOs are hybrid ISO/HFS
+        "cdr",          // macOS disc master (often HFS)
     ]
 
     public static func canHandle(filename: String) -> Bool {
