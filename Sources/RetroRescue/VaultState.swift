@@ -20,7 +20,7 @@ final class VaultState: ObservableObject {
     /// Is the selected entry an archive we can extract?
     var selectedIsArchive: Bool {
         guard let entry = selectedEntry, !entry.isDirectory else { return false }
-        return UnarExtractor.canHandle(filename: entry.name)
+        return Self.isExtractable(entry.name)
     }
 
     /// Does the selected entry have extracted children?
@@ -149,13 +149,26 @@ final class VaultState: ObservableObject {
 
     // MARK: - Extract archive
 
+    /// Check if a file is extractable (archive, disk image, etc.)
+    static func isExtractable(_ name: String) -> Bool {
+        UnarExtractor.canHandle(filename: name)
+    }
+
     func extractSelected() {
-        guard let vault, let entry = selectedEntry else { return }
+        guard let entry = selectedEntry else { return }
+        extractEntry(id: entry.id)
+    }
+
+    /// Extract any entry by ID. Works recursively — extracted files that are
+    /// themselves archives can be extracted again, building a deeper tree.
+    func extractEntry(id: String) {
+        guard let vault else { return }
+        guard let entry = try? vault.entry(id: id) else { return }
         isImporting = true
         defer { isImporting = false }
 
         do {
-            let archiveData = try vault.dataFork(for: entry.id)
+            let archiveData = try vault.dataFork(for: id)
             let tempFile = FileManager.default.temporaryDirectory
                 .appendingPathComponent(entry.name)
             try archiveData.write(to: tempFile)
@@ -167,7 +180,6 @@ final class VaultState: ObservableObject {
                 return
             }
 
-            // Store extracted files as children of the archive
             for file in extracted {
                 try vault.addFile(
                     name: file.name,
@@ -177,7 +189,7 @@ final class VaultState: ObservableObject {
                     creatorCode: file.creatorCode,
                     finderFlags: file.finderFlags,
                     sourceArchive: entry.name,
-                    parentID: entry.id
+                    parentID: id
                 )
             }
 
