@@ -65,9 +65,17 @@ public enum UnarExtractor {
         "tar", "gz", "tgz", "bz2", "tbz", "tbz2",
         "xz", "txz", "lzma", "tlz", "zst",
         "Z",  // Unix compress
-        // Disk/package formats unar can handle
+        // CD/DVD image formats (ISO 9660 etc.)
+        "iso",          // ISO 9660 — most common CD image format
+        "bin", "cue",   // BIN/CUE raw CD sector dump
+        "nrg",          // Nero CD image
+        "cdr",          // macOS Disk Utility CD/DVD master
+        "toast",        // Roxio Toast image
+        // Disk/package formats
         "mar", "msi", "nsis", "deb", "rpm",
-        "dmg", "iso",
+        "dmg",
+        // Amiga formats (unar via libxad)
+        "adf", "dms", "lzx",
     ]
 
     /// Compound extensions where the last part alone isn't enough.

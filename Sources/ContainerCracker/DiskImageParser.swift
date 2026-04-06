@@ -13,6 +13,8 @@ public enum DiskImageParser {
         case diskCopy42 = "DiskCopy 4.2"
         case ndif = "NDIF (DiskCopy 6.x)"
         case udif = "UDIF (.dmg)"
+        case iso9660 = "ISO 9660"
+        case hybridISO_HFS = "Hybrid ISO 9660/HFS"
         case raw = "Raw disk image"
         case unknown = "Unknown"
     }
@@ -58,6 +60,21 @@ public enum DiskImageParser {
             if trailer[start] == 0x6B && trailer[start+1] == 0x6F
                 && trailer[start+2] == 0x6C && trailer[start+3] == 0x79 {
                 return .udif
+            }
+        }
+
+        // ISO 9660: "CD001" at offset 32769 (sector 16 + 1 byte)
+        if data.count > 32774 {
+            let iso = data[32769..<32774]
+            if iso.elementsEqual("CD001".utf8) {
+                // Check if also HFS (hybrid disc)
+                if data.count > 1026 {
+                    let hfsMagic = UInt16(data[1024]) << 8 | UInt16(data[1025])
+                    if hfsMagic == 0x4244 {
+                        return .hybridISO_HFS
+                    }
+                }
+                return .iso9660
             }
         }
 
@@ -164,6 +181,19 @@ public enum DiskImageParser {
                                 diskName: nil, dataSize: rawData.count,
                                 diskType: "Converted via hdiutil")
             return (rawData, info)
+
+        case .iso9660:
+            // ISO 9660 should be handled by unar, not HFS extraction
+            throw ContainerError.unsupportedFormat(
+                "This is an ISO 9660 disc image. Use the standard archive extraction path (unar) for this format.")
+
+        case .hybridISO_HFS:
+            // Hybrid disc: extract the HFS partition
+            let fs = detectFilesystem(rawData: data)
+            let info = ImageInfo(format: .hybridISO_HFS, filesystem: fs,
+                                diskName: nil, dataSize: data.count,
+                                diskType: "Hybrid ISO 9660/HFS disc")
+            return (data, info)
 
         case .raw:
             let fs = detectFilesystem(rawData: data)
