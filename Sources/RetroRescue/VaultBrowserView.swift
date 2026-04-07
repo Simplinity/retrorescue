@@ -1,5 +1,6 @@
 import SwiftUI
 import VaultEngine
+import ContainerCracker
 
 struct VaultBrowserView: View {
     @EnvironmentObject var state: VaultState
@@ -346,63 +347,112 @@ struct VaultBrowserView: View {
     // MARK: - File Preview
 
     private func filePreviewSection(_ entry: VaultEntry) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // File info bar — always shown
+        VStack(alignment: .leading, spacing: 0) {
+            // Mini inspector header
             HStack(spacing: 8) {
-                Image(systemName: "info.circle")
-                    .foregroundStyle(.secondary)
-                Text(entry.name)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-                if let desc = FilePreviewHelper.fileTypeDescription(entry: entry) {
-                    Text("—")
-                        .foregroundStyle(.tertiary)
-                    Text(desc)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                Image(systemName: inspectorIcon(for: entry))
+                    .font(.title3)
+                    .foregroundStyle(inspectorIconColor(for: entry))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.name)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                    if let desc = FilePreviewHelper.fileTypeDescription(entry: entry) {
+                        Text(desc)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                if let tc = entry.typeCreatorDisplay {
-                    Text(tc)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if entry.hasResourceFork {
-                    Label(ByteCountFormatter.string(fromByteCount: entry.rsrcForkSize, countStyle: .file),
-                          systemImage: "puzzlepiece.extension")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
+
                 Spacer()
+
                 Button {
                     state.previewingEntry = nil
                     state.previewText = nil
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal)
-            .padding(.top, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
 
-            // Text preview content (only for text-previewable files)
+            // Metadata grid
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                GridRow {
+                    Text("Size").font(.caption).foregroundStyle(.secondary)
+                    Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
+                        .font(.caption)
+                }
+                if entry.hasResourceFork {
+                    GridRow {
+                        Text("Resource").font(.caption).foregroundStyle(.secondary)
+                        Text(ByteCountFormatter.string(fromByteCount: entry.rsrcForkSize, countStyle: .file))
+                            .font(.caption)
+                    }
+                }
+                if let tc = entry.typeCreatorDisplay {
+                    GridRow {
+                        Text("Type/Creator").font(.caption).foregroundStyle(.secondary)
+                        Text(tc).font(.system(.caption, design: .monospaced))
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
+
+            // Text preview (only for text files)
             if let text = state.previewText {
                 Divider()
                 ScrollView {
                     Text(text)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
+                        .padding(8)
                 }
-                .frame(minHeight: 100, maxHeight: 250)
+                .frame(minHeight: 80, maxHeight: 200)
             }
         }
-        .background(.quaternary.opacity(0.2))
-        .padding(.bottom, 4)
+        .background(.bar)
+    }
+
+    private func inspectorIcon(for entry: VaultEntry) -> String {
+        if UnarExtractor.canHandle(filename: entry.name) || HFSExtractor.canHandle(filename: entry.name) {
+            return "archivebox.fill"
+        }
+        switch entry.typeCode {
+        case "APPL": return "app.fill"
+        case "TEXT", "ttro": return "doc.text.fill"
+        case "PICT": return "photo.fill"
+        case "snd ": return "speaker.wave.2.fill"
+        default: break
+        }
+        let ext = (entry.name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "pdf": return "doc.richtext.fill"
+        case "jpg", "jpeg", "png", "gif", "tiff", "bmp", "pict": return "photo.fill"
+        case "mov", "mp4", "avi": return "film.fill"
+        case "mp3", "aiff", "aif", "wav": return "music.note"
+        case "c", "h", "p", "pas", "swift", "py", "r", "rez": return "chevron.left.forwardslash.chevron.right"
+        case "rsrc": return "puzzlepiece.extension.fill"
+        case "ttf", "otf": return "textformat"
+        default: return "doc.fill"
+        }
+    }
+
+    private func inspectorIconColor(for entry: VaultEntry) -> Color {
+        if UnarExtractor.canHandle(filename: entry.name) || HFSExtractor.canHandle(filename: entry.name) {
+            return .orange
+        }
+        switch entry.typeCode {
+        case "APPL": return .purple
+        case "PICT": return .green
+        case "snd ": return .pink
+        default: return .secondary
+        }
     }
 
     // MARK: - Actions
