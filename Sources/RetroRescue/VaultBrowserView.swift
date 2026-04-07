@@ -377,7 +377,8 @@ struct VaultBrowserView: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
 
             // Metadata grid
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
@@ -413,9 +414,11 @@ struct VaultBrowserView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                 }
-                .frame(minHeight: 80, maxHeight: 200)
             }
+
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(.bar)
     }
 
