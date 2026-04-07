@@ -518,4 +518,59 @@ enum FilePreviewHelper {
             return nil
         }
     }
+
+    // MARK: - PICT Conversion
+
+    /// Check if a file is a PICT image that can be converted.
+    static func isPICT(entry: VaultEntry) -> Bool {
+        if entry.typeCode == "PICT" { return true }
+        let ext = (entry.name as NSString).pathExtension.lowercased()
+        return ext == "pict" || ext == "pct"
+    }
+
+    /// Convert a PICT file to PNG using macOS sips.
+    /// Returns the PNG data, or nil if conversion fails.
+    static func convertPICTtoPNG(vault: Vault, entry: VaultEntry, sipsPath: String = "/usr/bin/sips") -> Data? {
+        guard let data = try? vault.dataFork(for: entry.id) else { return nil }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("retrorescue-convert")
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let inputURL = tempDir.appendingPathComponent("input.pict")
+        let outputURL = tempDir.appendingPathComponent("output.png")
+
+        do {
+            try data.write(to: inputURL)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: sipsPath)
+            process.arguments = ["-s", "format", "png", inputURL.path, "--out", outputURL.path]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus == 0,
+               FileManager.default.fileExists(atPath: outputURL.path) {
+                let pngData = try Data(contentsOf: outputURL)
+                try? FileManager.default.removeItem(at: inputURL)
+                try? FileManager.default.removeItem(at: outputURL)
+                return pngData
+            }
+        } catch { }
+
+        try? FileManager.default.removeItem(at: inputURL)
+        try? FileManager.default.removeItem(at: outputURL)
+        return nil
+    }
+
+    /// Check if a file can be converted to a modern format.
+    static func canConvert(entry: VaultEntry) -> Bool {
+        isPICT(entry: entry)
+    }
+
+    /// Human-readable target format for conversion.
+    static func conversionTarget(entry: VaultEntry) -> String? {
+        if isPICT(entry: entry) { return "PNG image" }
+        return nil
+    }
 }

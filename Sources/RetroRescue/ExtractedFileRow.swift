@@ -7,9 +7,11 @@ import ContainerCracker
 struct ExtractedFileRow: View {
     @ObservedObject var node: FileTreeNode
     var onExtract: ((String) -> Void)?
+    var onExtractSelected: ((String) -> Void)?
     var onQuickLook: ((VaultEntry) -> Void)?
     var onOpen: ((VaultEntry) -> Void)?
     var onPreview: ((VaultEntry) -> Void)?
+    var onConvert: ((VaultEntry) -> Void)?
     var onMessage: ((String) -> Void)?
 
     var body: some View {
@@ -82,7 +84,12 @@ struct ExtractedFileRow: View {
                     onExtract?(node.entry.id)
                     node.reloadChildren()
                 } label: {
-                    Label("Extract Contents", systemImage: "archivebox")
+                    Label("Extract", systemImage: "archivebox")
+                }
+                Button {
+                    onExtractSelected?(node.entry.id)
+                } label: {
+                    Label("Extract Selected…", systemImage: "checklist")
                 }
             }
 
@@ -90,9 +97,10 @@ struct ExtractedFileRow: View {
                 Button { showNotImplemented("Export") } label: {
                     Label("Export to Finder…", systemImage: "square.and.arrow.up")
                 }
-                Button { showNotImplemented("Convert") } label: {
+                Button { onConvert?(node.entry) } label: {
                     Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
                 }
+                .disabled(!FilePreviewHelper.canConvert(entry: node.entry))
             }
 
             Divider()

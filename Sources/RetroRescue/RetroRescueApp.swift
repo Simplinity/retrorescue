@@ -11,6 +11,9 @@ struct RetroRescueApp: App {
         if let unarPath = tc.unar {
             UnarExtractor.overridePath = unarPath
         }
+        if let lsarPath = tc.lsar {
+            UnarExtractor.lsarOverridePath = lsarPath
+        }
     }
 
     var body: some Scene {

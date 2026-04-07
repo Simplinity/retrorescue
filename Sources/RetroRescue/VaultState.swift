@@ -11,15 +11,25 @@ final class VaultState: ObservableObject {
     @Published var extractedTree: [FileTreeNode] = []   // tree nodes for outline view
     @Published var previewingEntry: VaultEntry?          // file being previewed in right panel
     @Published var previewText: String?                  // text content for inline preview
+    @Published var previewImage: NSImage?                // image for inline preview (PICT etc.)
     @Published var selectedExtractedID: String?          // selected file in extracted tree
     @Published var error: String?
     @Published var isImporting = false
 
-    // Selective import state (HFS disk images)
+    // Selective import state
     @Published var showSelectiveImport = false
-    @Published var selectiveImportItems: [HFSExtractor.HFSItem] = []
-    @Published var selectiveImportVolumeName: String?
-    @Published var selectiveImportEntryID: String?       // the vault entry being extracted
+    @Published var selectiveImportItems: [SelectiveImportItem] = []
+    @Published var selectiveImportTitle: String?
+    @Published var selectiveImportEntryID: String?
+
+    /// Generic item for selective import (works for both unar and HFS).
+    struct SelectiveImportItem: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let path: String         // full path for extraction
+        let size: Int64
+        let isDirectory: Bool
+    }
 
     var isOpen: Bool { vault != nil }
 
@@ -92,6 +102,7 @@ final class VaultState: ObservableObject {
             selectedExtractedID = nil
             previewingEntry = nil
             previewText = nil
+            previewImage = nil
             return
         }
         do {
@@ -192,6 +203,7 @@ final class VaultState: ObservableObject {
         guard let vault, let id else {
             previewingEntry = nil
             previewText = nil
+            previewImage = nil
             return
         }
         guard let entry = try? vault.entry(id: id),
@@ -203,10 +215,17 @@ final class VaultState: ObservableObject {
 
         // Always set the previewing entry for the info bar
         previewingEntry = entry
+        previewImage = nil
 
         // Load text content if previewable
         if FilePreviewHelper.isTextPreviewable(entry: entry) {
             previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
+        } else if FilePreviewHelper.isPICT(entry: entry) {
+            previewText = nil
+            if let sips = ToolChain.shared.sips,
+                   let pngData = FilePreviewHelper.convertPICTtoPNG(vault: vault, entry: entry, sipsPath: sips) {
+                previewImage = NSImage(data: pngData)
+            }
         } else {
             previewText = nil
         }
@@ -261,51 +280,62 @@ final class VaultState: ObservableObject {
 
     /// Extract any entry by ID. Works recursively — extracted files that are
     /// themselves archives can be extracted again, building a deeper tree.
+    /// Extract all files from an entry (the "Extract" action).
     func extractEntry(id: String) {
         guard let vault else { return }
         guard let entry = try? vault.entry(id: id) else { return }
-
-        // Prevent double extraction
         let existing = (try? vault.entries(parentID: id)) ?? []
         guard existing.isEmpty else { return }
-
-        // HFS disk images → show selective import sheet
-        if HFSExtractor.canHandle(filename: entry.name),
-           let hm = ToolChain.shared.hmount,
-           let hl = ToolChain.shared.hls,
-           let _ = ToolChain.shared.hcopy,
-           let hu = ToolChain.shared.humount {
-            do {
-                let archiveData = try vault.dataFork(for: id)
-                let tempFile = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(entry.name)
-                try archiveData.write(to: tempFile)
-                defer { try? FileManager.default.removeItem(at: tempFile) }
-
-                let (items, volName) = try HFSExtractor.listContents(
-                    imageURL: tempFile, hmountPath: hm, hlsPath: hl, humountPath: hu)
-                selectiveImportItems = items
-                selectiveImportVolumeName = volName
-                selectiveImportEntryID = id
-                showSelectiveImport = true
-            } catch {
-                self.error = "Could not read disk image: \(error.localizedDescription)"
-            }
-            return
-        }
-
-        // Archives → extract all immediately
         extractAllFromEntry(id: id)
     }
 
-    /// Import selected files from an HFS disk image.
+    /// Show the selective import sheet (the "Extract Selected…" action).
+    func showSelectiveImportSheet(id: String) {
+        guard let vault else { return }
+        guard let entry = try? vault.entry(id: id) else { return }
+
+        do {
+            let archiveData = try vault.dataFork(for: id)
+            let tempFile = FileManager.default.temporaryDirectory
+                .appendingPathComponent(entry.name)
+            try archiveData.write(to: tempFile)
+            defer { try? FileManager.default.removeItem(at: tempFile) }
+
+            var items: [SelectiveImportItem] = []
+            var title = entry.name
+
+            if UnarExtractor.canHandle(filename: entry.name) {
+                let archiveItems = try UnarExtractor.listContents(archiveURL: tempFile)
+                items = archiveItems.map { item in
+                    SelectiveImportItem(id: item.id, name: item.name, path: item.name,
+                                       size: item.size, isDirectory: false)
+                }
+            } else if HFSExtractor.canHandle(filename: entry.name),
+                      let hm = ToolChain.shared.hmount,
+                      let hl = ToolChain.shared.hls,
+                      let hu = ToolChain.shared.humount {
+                let (hfsItems, volName) = try HFSExtractor.listContents(
+                    imageURL: tempFile, hmountPath: hm, hlsPath: hl, humountPath: hu)
+                items = hfsItems.map { item in
+                    SelectiveImportItem(id: item.id, name: item.name, path: item.path,
+                                       size: 0, isDirectory: item.isDirectory)
+                }
+                title = volName ?? entry.name
+            }
+
+            selectiveImportItems = items
+            selectiveImportTitle = title
+            selectiveImportEntryID = id
+            showSelectiveImport = true
+        } catch {
+            self.error = "Could not list contents: \(error.localizedDescription)"
+        }
+    }
+
+    /// Import selected files from the selective import sheet.
     func performSelectiveImport(selectedPaths: [String]) {
         guard let vault, let entryID = selectiveImportEntryID else { return }
         guard let entry = try? vault.entry(id: entryID) else { return }
-        guard let hm = ToolChain.shared.hmount,
-              let hl = ToolChain.shared.hls,
-              let hc = ToolChain.shared.hcopy,
-              let hu = ToolChain.shared.humount else { return }
 
         showSelectiveImport = false
         isImporting = true
@@ -318,9 +348,22 @@ final class VaultState: ObservableObject {
             try archiveData.write(to: tempFile)
             defer { try? FileManager.default.removeItem(at: tempFile) }
 
-            let extracted = try HFSExtractor.extractSelected(
-                imageURL: tempFile, selectedPaths: selectedPaths,
-                hmountPath: hm, hlsPath: hl, hcopyPath: hc, humountPath: hu)
+            let extracted: [ExtractedFile]
+
+            if UnarExtractor.canHandle(filename: entry.name) {
+                extracted = try UnarExtractor.extract(archiveURL: tempFile, onlyFiles: selectedPaths)
+            } else if HFSExtractor.canHandle(filename: entry.name),
+                      let hm = ToolChain.shared.hmount,
+                      let hl = ToolChain.shared.hls,
+                      let hc = ToolChain.shared.hcopy,
+                      let hu = ToolChain.shared.humount {
+                extracted = try HFSExtractor.extractSelected(
+                    imageURL: tempFile, selectedPaths: selectedPaths,
+                    hmountPath: hm, hlsPath: hl, hcopyPath: hc, humountPath: hu)
+            } else {
+                self.error = "No extraction tool available"
+                return
+            }
 
             for file in extracted {
                 try vault.addFile(
@@ -397,6 +440,36 @@ final class VaultState: ObservableObject {
             loadExtractedEntries()
         } catch {
             self.error = "Extract failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Convert to modern format
+
+    /// Convert a file to a modern format (e.g. PICT → PNG).
+    /// The converted file is added to the vault next to the original.
+    func convertToModernFormat(entry: VaultEntry) {
+        guard let vault else { return }
+
+        if FilePreviewHelper.isPICT(entry: entry) {
+            guard let sips = ToolChain.shared.sips,
+                      let pngData = FilePreviewHelper.convertPICTtoPNG(vault: vault, entry: entry, sipsPath: sips) else {
+                self.error = "PICT conversion failed. The file may be damaged or use an unsupported PICT variant."
+                return
+            }
+            let pngName = (entry.name as NSString).deletingPathExtension + ".png"
+            do {
+                try vault.addFile(
+                    name: pngName,
+                    data: pngData,
+                    sourceArchive: entry.name,
+                    parentID: entry.parentID
+                )
+                loadExtractedEntries()
+            } catch {
+                self.error = "Failed to save converted file: \(error.localizedDescription)"
+            }
+        } else {
+            self.error = "No converter available for this file type."
         }
     }
 }

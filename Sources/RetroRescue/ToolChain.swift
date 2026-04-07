@@ -36,6 +36,7 @@ final class ToolChain: ObservableObject {
     // MARK: - Quick accessors
 
     var unar: String?      { tools["unar"]?.path }
+    var lsar: String?      { tools["lsar"]?.path }
     var sips: String?      { tools["sips"]?.path }
     var textutil: String?  { tools["textutil"]?.path }
     var qlmanage: String?  { tools["qlmanage"]?.path }

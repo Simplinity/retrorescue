@@ -13,6 +13,64 @@ public enum UnarExtractor {
     /// Find the unar binary path.
     /// Override path for unar binary. Set by the app's ToolChain.
     public static var overridePath: String?
+    /// Override path for lsar binary.
+    public static var lsarOverridePath: String?
+
+    /// An item listed inside an archive (for selective import).
+    public struct ArchiveItem: Identifiable, Hashable {
+        public let id: String
+        public let name: String
+        public let size: Int64
+        public let isResourceFork: Bool
+    }
+
+    /// List the contents of an archive without extracting.
+    public static func listContents(archiveURL: URL) throws -> [ArchiveItem] {
+        guard let path = lsarPath() else {
+            throw ContainerError.unsupportedFormat("lsar not available")
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["-j", archiveURL.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let contents = json["lsarContents"] as? [[String: Any]]
+        else { return [] }
+
+        var items: [ArchiveItem] = []
+        var seen = Set<String>()
+
+        for entry in contents {
+            let name = entry["XADFileName"] as? String ?? "unknown"
+            let isRsrc = entry["XADIsResourceFork"] as? Bool ?? false
+            let size = (entry["XADFileSize"] as? Int64)
+                ?? Int64(entry["XADFileSize"] as? Int ?? 0)
+
+            // Skip duplicate names (resource fork entries pair with data entries)
+            if isRsrc { continue }
+            if seen.contains(name) { continue }
+            seen.insert(name)
+
+            items.append(ArchiveItem(id: name, name: name, size: size, isResourceFork: false))
+        }
+        return items
+    }
+
+    public static func lsarPath() -> String? {
+        if let override = lsarOverridePath { return override }
+        let candidates = [
+            Bundle.main.resourcePath.map { "\($0)/tools/lsar" },
+            "/opt/homebrew/bin/lsar",
+            "/usr/local/bin/lsar",
+        ].compactMap { $0 }
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
 
     public static func unarPath() -> String? {
         if let override = overridePath { return override }
@@ -96,7 +154,7 @@ public enum UnarExtractor {
     }
 
     /// Extract an archive to a temp directory, returning extracted files with metadata.
-    public static func extract(archiveURL: URL) throws -> [ExtractedFile] {
+    public static func extract(archiveURL: URL, onlyFiles: [String]? = nil) throws -> [ExtractedFile] {
         guard let path = unarPath() else {
             throw ContainerError.unsupportedFormat("unar not installed. Run: brew install unar")
         }
@@ -116,7 +174,7 @@ public enum UnarExtractor {
             "-k", "visible",       // resource forks as ._ AppleDouble files
             "-f",                   // force overwrite
             archiveURL.path
-        ]
+        ] + (onlyFiles ?? [])
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe

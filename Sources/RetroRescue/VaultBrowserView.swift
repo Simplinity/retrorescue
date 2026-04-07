@@ -247,12 +247,16 @@ struct VaultBrowserView: View {
         )) { node in
             ExtractedFileRow(node: node) { entryID in
                 state.extractEntry(id: entryID)
+            } onExtractSelected: { entryID in
+                state.showSelectiveImportSheet(id: entryID)
             } onQuickLook: { entry in
                 state.quickLook(entry)
             } onOpen: { entry in
                 state.openInDefaultApp(entry)
             } onPreview: { entry in
                 state.previewFile(entry)
+            } onConvert: { entry in
+                state.convertToModernFormat(entry: entry)
             } onMessage: { msg in
                 state.error = msg
             }
@@ -318,7 +322,15 @@ struct VaultBrowserView: View {
             state.select(entry)
             state.extractSelected()
         } label: {
-            Label("Extract Contents", systemImage: "archivebox")
+            Label("Extract", systemImage: "archivebox")
+        }
+        .disabled(!isArchive || isExtracted)
+
+        Button {
+            state.select(entry)
+            state.showSelectiveImportSheet(id: entry.id)
+        } label: {
+            Label("Extract Selected…", systemImage: "checklist")
         }
         .disabled(!isArchive || isExtracted)
 
@@ -330,9 +342,17 @@ struct VaultBrowserView: View {
         Button { showNotImplemented("Reveal in Finder") } label: {
             Label("Reveal in Finder", systemImage: "folder")
         }
-        Button { showNotImplemented("Convert to Modern Format") } label: {
-            Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
+        Button {
+            state.select(entry)
+            state.convertToModernFormat(entry: entry)
+        } label: {
+            if let target = FilePreviewHelper.conversionTarget(entry: entry) {
+                Label("Convert to \(target)", systemImage: "arrow.triangle.2.circlepath")
+            } else {
+                Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
+            }
         }
+        .disabled(!FilePreviewHelper.canConvert(entry: entry))
 
         Divider()
 
@@ -428,6 +448,18 @@ struct VaultBrowserView: View {
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+            }
+
+            // Image preview (PICT → PNG)
+            if let image = state.previewImage {
+                Divider()
+                ScrollView {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
                         .padding(8)
                 }
             }
