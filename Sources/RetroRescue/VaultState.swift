@@ -35,11 +35,6 @@ final class VaultState: ObservableObject {
 
     var isOpen: Bool { vault != nil }
 
-    /// Entries to show in the left panel: search results or all root entries.
-    var displayedEntries: [VaultEntry] {
-        searchResults ?? entries
-    }
-
     var isSearching: Bool {
         !searchText.isEmpty
     }
@@ -153,6 +148,29 @@ final class VaultState: ObservableObject {
     func clearSearch() {
         searchText = ""
         searchResults = nil
+        previewingEntry = nil
+        previewText = nil
+        previewImage = nil
+    }
+
+    /// Select a search result — show its info in the inspector.
+    func selectSearchResult(_ entry: VaultEntry) {
+        previewingEntry = entry
+        previewImage = nil
+
+        if let vault {
+            if FilePreviewHelper.isTextPreviewable(entry: entry) {
+                previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
+            } else if FilePreviewHelper.isPICT(entry: entry) {
+                previewText = nil
+                if let sips = ToolChain.shared.sips,
+                   let pngData = FilePreviewHelper.convertPICTtoPNG(vault: vault, entry: entry, sipsPath: sips) {
+                    previewImage = NSImage(data: pngData)
+                }
+            } else {
+                previewText = nil
+            }
+        }
     }
 
     // MARK: - Add files

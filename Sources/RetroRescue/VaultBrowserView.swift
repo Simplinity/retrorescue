@@ -37,24 +37,13 @@ struct VaultBrowserView: View {
 
     private var archiveList: some View {
         VStack(spacing: 0) {
-            if state.displayedEntries.isEmpty && !state.isSearching {
+            if state.entries.isEmpty {
                 emptyDropZone
-            } else if state.displayedEntries.isEmpty && state.isSearching {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "magnifyingglass")
-                        .font(.title2)
-                        .foregroundStyle(.tertiary)
-                    Text("No results for \"\(state.searchText)\"")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
             } else {
-                List(state.displayedEntries, selection: Binding(
+                List(state.entries, selection: Binding(
                     get: { state.selectedEntry?.id },
                     set: { id in
-                        let entry = state.displayedEntries.first { $0.id == id }
+                        let entry = state.entries.first { $0.id == id }
                         state.select(entry)
                     }
                 )) { entry in
@@ -87,7 +76,9 @@ struct VaultBrowserView: View {
 
     private var detailPanel: some View {
         Group {
-            if let entry = state.selectedEntry {
+            if state.isSearching {
+                searchResultsPanel
+            } else if let entry = state.selectedEntry {
                 VStack(spacing: 0) {
                     // Info section: auto-sizes to content, NOT resizable
                     archiveInfoSection(entry)
@@ -284,6 +275,86 @@ struct VaultBrowserView: View {
         .listStyle(.inset(alternatesRowBackgrounds: true))
     }
 
+    // MARK: - Search Results
+
+    private var searchResultsPanel: some View {
+        VStack(spacing: 0) {
+            if let results = state.searchResults, !results.isEmpty {
+                List {
+                    ForEach(groupedSearchResults(results), id: \.archive) { group in
+                        Section(group.archive) {
+                            ForEach(group.entries) { entry in
+                                HStack(spacing: 8) {
+                                    Image(systemName: "doc")
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 16)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(entry.name)
+                                            .lineLimit(1)
+                                        if let desc = FilePreviewHelper.fileTypeDescription(entry: entry) {
+                                            Text(desc)
+                                                .font(.caption)
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    Spacer()
+                                    if let tc = entry.typeCreatorDisplay {
+                                        Text(tc)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    state.selectSearchResult(entry)
+                                }
+                            }
+                        }
+                    }
+                }
+                .listStyle(.inset(alternatesRowBackgrounds: true))
+            } else {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.tertiary)
+                    Text("No results for \"\(state.searchText)\"")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            // Inspector for selected search result
+            if let entry = state.previewingEntry, state.isSearching {
+                Divider()
+                filePreviewSection(entry)
+                    .frame(maxHeight: 200)
+            }
+        }
+    }
+
+    private struct SearchGroup {
+        let archive: String
+        let entries: [VaultEntry]
+    }
+
+    private func groupedSearchResults(_ results: [VaultEntry]) -> [SearchGroup] {
+        var groups: [String: [VaultEntry]] = [:]
+        for entry in results {
+            let source = entry.sourceArchive ?? "Vault root"
+            groups[source, default: []].append(entry)
+        }
+        return groups
+            .sorted { $0.key < $1.key }
+            .map { SearchGroup(archive: $0.key, entries: $0.value) }
+    }
+
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
@@ -309,14 +380,14 @@ struct VaultBrowserView: View {
 
     private var statusBar: some View {
         HStack {
-            if state.isSearching {
-                Text("\(state.displayedEntries.count) results")
+            Text("\(state.entries.count) items")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if state.isSearching, let r = state.searchResults {
+                Spacer()
+                Text("\(r.count) results")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("\(state.entries.count) items")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.orange)
             }
             Spacer()
         }
