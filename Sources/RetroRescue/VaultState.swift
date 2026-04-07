@@ -17,6 +17,7 @@ final class VaultState: ObservableObject {
     @Published var isImporting = false
     @Published var searchText: String = ""
     @Published var searchResults: [VaultEntry]?      // nil = not searching
+    @Published var getInfoEntry: VaultEntry?          // entry for Get Info sheet
 
     // Selective import state
     @Published var showSelectiveImport = false

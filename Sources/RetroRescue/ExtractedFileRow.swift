@@ -14,6 +14,7 @@ struct ExtractedFileRow: View {
     var onConvert: ((VaultEntry) -> Void)?
     var onExport: ((VaultEntry) -> Void)?
     var onDragFile: ((VaultEntry) -> URL?)?
+    var onGetInfo: ((VaultEntry) -> Void)?
     var onMessage: ((String) -> Void)?
 
     var body: some View {
@@ -98,6 +99,9 @@ struct ExtractedFileRow: View {
             if !node.entry.isDirectory {
                 Button { onExport?(node.entry) } label: {
                     Label("Export to Finder…", systemImage: "square.and.arrow.up")
+                }
+                Button { onGetInfo?(node.entry) } label: {
+                    Label("Get Info", systemImage: "info.circle")
                 }
                 Button { onConvert?(node.entry) } label: {
                     Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")

@@ -31,6 +31,9 @@ struct VaultBrowserView: View {
             SelectiveImportView()
                 .environmentObject(state)
         }
+        .sheet(item: $state.getInfoEntry) { entry in
+            GetInfoView(entry: entry)
+        }
     }
 
     // MARK: - Left panel: archive list
@@ -278,6 +281,8 @@ struct VaultBrowserView: View {
                 state.exportToFinder(entry)
             } onDragFile: { entry in
                 state.writeTempFileForExport(entry)
+            } onGetInfo: { entry in
+                state.getInfoEntry = entry
             } onMessage: { msg in
                 state.error = msg
             }
@@ -419,7 +424,7 @@ struct VaultBrowserView: View {
         Button { state.openInDefaultApp(entry) } label: {
             Label("Open", systemImage: "arrow.up.forward.app")
         }
-        Button { showNotImplemented("Get Info") } label: {
+        Button { state.getInfoEntry = entry } label: {
             Label("Get Info", systemImage: "info.circle")
         }
 
