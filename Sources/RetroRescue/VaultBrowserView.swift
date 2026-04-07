@@ -13,6 +13,15 @@ struct VaultBrowserView: View {
             detailPanel
         }
         .navigationTitle(state.vaultName)
+        .searchable(text: $state.searchText, prompt: "Search files…")
+        .onSubmit(of: .search) { state.performSearch() }
+        .onChange(of: state.searchText) { _, newValue in
+            if newValue.isEmpty {
+                state.clearSearch()
+            } else {
+                state.performSearch()
+            }
+        }
         .toolbar { toolbarContent }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
@@ -28,13 +37,24 @@ struct VaultBrowserView: View {
 
     private var archiveList: some View {
         VStack(spacing: 0) {
-            if state.entries.isEmpty {
+            if state.displayedEntries.isEmpty && !state.isSearching {
                 emptyDropZone
+            } else if state.displayedEntries.isEmpty && state.isSearching {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "magnifyingglass")
+                        .font(.title2)
+                        .foregroundStyle(.tertiary)
+                    Text("No results for \"\(state.searchText)\"")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             } else {
-                List(state.entries, selection: Binding(
+                List(state.displayedEntries, selection: Binding(
                     get: { state.selectedEntry?.id },
                     set: { id in
-                        let entry = state.entries.first { $0.id == id }
+                        let entry = state.displayedEntries.first { $0.id == id }
                         state.select(entry)
                     }
                 )) { entry in
@@ -289,9 +309,15 @@ struct VaultBrowserView: View {
 
     private var statusBar: some View {
         HStack {
-            Text("\(state.entries.count) items")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if state.isSearching {
+                Text("\(state.displayedEntries.count) results")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("\(state.entries.count) items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
         }
         .padding(.horizontal, 12)

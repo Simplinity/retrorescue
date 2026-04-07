@@ -221,9 +221,13 @@ public final class Vault {
 
     public func search(query: String) throws -> [VaultEntry] {
         let pattern = "%\(query)%"
-        let rows = try db.query(
-            "SELECT * FROM entries WHERE name LIKE ? OR path LIKE ? OR source LIKE ? ORDER BY name",
-            params: [pattern, pattern, pattern]
+        let rows = try db.query("""
+            SELECT * FROM entries
+            WHERE name LIKE ? OR path LIKE ? OR source LIKE ?
+               OR type_code LIKE ? OR creator_code LIKE ?
+            ORDER BY name
+            """,
+            params: [pattern, pattern, pattern, pattern, pattern]
         )
         return rows.map { Self.entryFromRow($0) }
     }

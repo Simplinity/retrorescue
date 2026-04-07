@@ -15,6 +15,8 @@ final class VaultState: ObservableObject {
     @Published var selectedExtractedID: String?          // selected file in extracted tree
     @Published var error: String?
     @Published var isImporting = false
+    @Published var searchText: String = ""
+    @Published var searchResults: [VaultEntry]?      // nil = not searching
 
     // Selective import state
     @Published var showSelectiveImport = false
@@ -32,6 +34,15 @@ final class VaultState: ObservableObject {
     }
 
     var isOpen: Bool { vault != nil }
+
+    /// Entries to show in the left panel: search results or all root entries.
+    var displayedEntries: [VaultEntry] {
+        searchResults ?? entries
+    }
+
+    var isSearching: Bool {
+        !searchText.isEmpty
+    }
 
     var vaultName: String {
         vault?.url.deletingPathExtension().lastPathComponent ?? "RetroRescue"
@@ -118,6 +129,30 @@ final class VaultState: ObservableObject {
     func children(of parentID: String) -> [VaultEntry] {
         guard let vault else { return [] }
         return (try? vault.entries(parentID: parentID)) ?? []
+    }
+
+    // MARK: - Search
+
+    func performSearch() {
+        guard let vault else {
+            searchResults = nil
+            return
+        }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            searchResults = nil
+            return
+        }
+        do {
+            searchResults = try vault.search(query: query)
+        } catch {
+            searchResults = []
+        }
+    }
+
+    func clearSearch() {
+        searchText = ""
+        searchResults = nil
     }
 
     // MARK: - Add files
