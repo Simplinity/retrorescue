@@ -193,6 +193,7 @@ public enum UnarExtractor {
     }
 
     /// Scan a directory for extracted files, pairing data forks with AppleDouble ._ files.
+    /// Handles both sibling ._ files and __MACOSX/ folder structure from ZIP archives.
     private static func scanExtractedFiles(in directory: URL) throws -> [ExtractedFile] {
         let fm = FileManager.default
         let contents = try fm.contentsOfDirectory(
@@ -201,6 +202,10 @@ public enum UnarExtractor {
             options: [.skipsHiddenFiles]
         )
 
+        // Detect __MACOSX folder (ZIP archives store ._ files here)
+        let macosxDir = directory.appendingPathComponent("__MACOSX")
+        let hasMacOSX = fm.fileExists(atPath: macosxDir.path)
+
         var results: [ExtractedFile] = []
 
         for url in contents {
@@ -208,6 +213,9 @@ public enum UnarExtractor {
 
             // Skip AppleDouble ._ files (handled as companions)
             if name.hasPrefix("._") { continue }
+
+            // Skip __MACOSX directory (we process it via lookups, not recursion)
+            if name == "__MACOSX" { continue }
 
             // Skip directories for now (flatten)
             let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
@@ -225,20 +233,35 @@ public enum UnarExtractor {
             var typeCode: String?
             var creatorCode: String?
             var finderFlags: UInt16 = 0
+            var created: Date?
+            var modified: Date?
 
+            // Strategy 1: sibling ._ file (same directory)
             let adURL = url.deletingLastPathComponent().appendingPathComponent("._\(name)")
-            if fm.fileExists(atPath: adURL.path) {
-                let adData = try Data(contentsOf: adURL)
-                if AppleDoubleParser.canParse(adData) {
-                    let parsed = try AppleDoubleParser.parse(adData)
-                    rsrcFork = parsed.rsrcFork ?? Data()
-                    if let fi = parsed.finderInfo {
-                        let tc = AppleDoubleParser.typeCreator(from: fi)
-                        typeCode = tc.type
-                        creatorCode = tc.creator
-                        finderFlags = AppleDoubleParser.finderFlags(from: fi)
-                    }
+            // Strategy 2: __MACOSX/ mirror path
+            let relativePath = url.path.replacingOccurrences(of: directory.path + "/", with: "")
+            let macosxURL = macosxDir.appendingPathComponent("._\(relativePath)")
+            // Also check __MACOSX with just the filename (flat __MACOSX structure)
+            let macosxFlatURL = macosxDir.appendingPathComponent("._\(name)")
+
+            let adCandidates = [adURL, macosxURL, macosxFlatURL]
+
+            for candidate in adCandidates {
+                guard fm.fileExists(atPath: candidate.path) else { continue }
+                guard let adData = try? Data(contentsOf: candidate),
+                      AppleDoubleParser.canParse(adData) else { continue }
+
+                let parsed = try AppleDoubleParser.parse(adData)
+                rsrcFork = parsed.rsrcFork ?? Data()
+                if let fi = parsed.finderInfo {
+                    let tc = AppleDoubleParser.typeCreator(from: fi)
+                    typeCode = tc.type
+                    creatorCode = tc.creator
+                    finderFlags = AppleDoubleParser.finderFlags(from: fi)
                 }
+                created = parsed.created
+                modified = parsed.modified
+                break  // Use first match
             }
 
             results.append(ExtractedFile(
@@ -247,7 +270,9 @@ public enum UnarExtractor {
                 rsrcFork: rsrcFork,
                 typeCode: typeCode,
                 creatorCode: creatorCode,
-                finderFlags: finderFlags
+                finderFlags: finderFlags,
+                created: created,
+                modified: modified
             ))
         }
 
