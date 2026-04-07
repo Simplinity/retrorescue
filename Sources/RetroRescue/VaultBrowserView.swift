@@ -18,6 +18,10 @@ struct VaultBrowserView: View {
             handleDrop(providers)
             return true
         }
+        .sheet(isPresented: $state.showSelectiveImport) {
+            SelectiveImportView()
+                .environmentObject(state)
+        }
     }
 
     // MARK: - Left panel: archive list

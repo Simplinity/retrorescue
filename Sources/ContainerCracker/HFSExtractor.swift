@@ -19,6 +19,114 @@ public enum HFSExtractor {
         return supportedExtensions.contains(ext)
     }
 
+    /// An item found inside an HFS disk image (for selective import).
+    public struct HFSItem: Identifiable, Hashable {
+        public let id: String       // HFS colon-separated path
+        public let name: String     // filename only
+        public let path: String     // full HFS path e.g. ":System Folder:Finder"
+        public let isDirectory: Bool
+
+        public init(name: String, path: String, isDirectory: Bool) {
+            self.id = path
+            self.name = name
+            self.path = path
+            self.isDirectory = isDirectory
+        }
+    }
+
+    /// List the contents of an HFS disk image without extracting.
+    /// Returns a flat list of all items (files and directories).
+    public static func listContents(imageURL: URL,
+                                    hmountPath: String,
+                                    hlsPath: String,
+                                    humountPath: String) throws -> (items: [HFSItem], volumeName: String?) {
+        let (rawData, info) = try DiskImageParser.extractRawData(from: imageURL)
+        guard info.filesystem == .hfs else {
+            throw ContainerError.unsupportedFormat(
+                "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem.")
+        }
+
+        let rawFile = try DiskImageParser.writeRawTemp(rawData)
+        defer { try? FileManager.default.removeItem(at: rawFile) }
+
+        // Mount
+        let mount = Process()
+        mount.executableURL = URL(fileURLWithPath: hmountPath)
+        mount.arguments = [rawFile.path]
+        mount.standardOutput = FileHandle.nullDevice
+        mount.standardError = FileHandle.nullDevice
+        try mount.run()
+        mount.waitUntilExit()
+        guard mount.terminationStatus == 0 else {
+            throw ContainerError.unsupportedFormat("Could not read this disk image.")
+        }
+
+        defer {
+            let umount = Process()
+            umount.executableURL = URL(fileURLWithPath: humountPath)
+            umount.standardOutput = FileHandle.nullDevice
+            umount.standardError = FileHandle.nullDevice
+            try? umount.run()
+            umount.waitUntilExit()
+        }
+
+        // List with -R -1 for files, -R -d -1 for directories
+        let ls = Process()
+        ls.executableURL = URL(fileURLWithPath: hlsPath)
+        ls.arguments = ["-R", "-1"]
+        let lsPipe = Pipe()
+        ls.standardOutput = lsPipe
+        ls.standardError = FileHandle.nullDevice
+        try ls.run()
+        ls.waitUntilExit()
+
+        let lsOutput = String(data: lsPipe.fileHandleForReading.readDataToEndOfFile(),
+                              encoding: .macOSRoman) ?? ""
+
+        var items: [HFSItem] = []
+        var dirs: Set<String> = []
+        var currentDir = ""
+
+        for line in lsOutput.split(separator: "\n", omittingEmptySubsequences: false) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            if trimmed.hasSuffix(":") {
+                currentDir = String(trimmed.dropLast())
+                if !currentDir.hasPrefix(":") { currentDir = ":\(currentDir)" }
+                if !dirs.contains(currentDir) {
+                    dirs.insert(currentDir)
+                    let dirName = (currentDir as NSString).lastPathComponent
+                    items.append(HFSItem(name: dirName, path: currentDir, isDirectory: true))
+                }
+            } else {
+                let fullPath = currentDir.isEmpty ? ":\(trimmed)" : "\(currentDir):\(trimmed)"
+                items.append(HFSItem(name: String(trimmed), path: fullPath, isDirectory: false))
+            }
+        }
+
+        return (items, info.diskName)
+    }
+
+    /// Extract only selected files from an HFS disk image.
+    public static func extractSelected(imageURL: URL,
+                                       selectedPaths: [String],
+                                       hmountPath: String,
+                                       hlsPath: String,
+                                       hcopyPath: String,
+                                       humountPath: String) throws -> [ExtractedFile] {
+        let (rawData, info) = try DiskImageParser.extractRawData(from: imageURL)
+        guard info.filesystem == .hfs else {
+            throw ContainerError.unsupportedFormat("Not an HFS volume.")
+        }
+        let rawFile = try DiskImageParser.writeRawTemp(rawData)
+        defer { try? FileManager.default.removeItem(at: rawFile) }
+
+        return try extractHFSPaths(imagePath: rawFile.path,
+                                   paths: selectedPaths,
+                                   hmountPath: hmountPath, hlsPath: hlsPath,
+                                   hcopyPath: hcopyPath, humountPath: humountPath)
+    }
+
     /// Extract all files from a disk image.
     /// Supports DiskCopy 4.2, NDIF, UDIF, and raw HFS images.
     public static func extract(imageURL: URL,
@@ -52,6 +160,63 @@ public enum HFSExtractor {
     }
 
     // MARK: - HFS extraction via hfsutils
+
+    /// Extract specific paths from a mounted HFS image.
+    private static func extractHFSPaths(imagePath: String,
+                                        paths: [String],
+                                        hmountPath: String,
+                                        hlsPath: String,
+                                        hcopyPath: String,
+                                        humountPath: String) throws -> [ExtractedFile] {
+        let mount = Process()
+        mount.executableURL = URL(fileURLWithPath: hmountPath)
+        mount.arguments = [imagePath]
+        mount.standardOutput = FileHandle.nullDevice
+        mount.standardError = Pipe()
+        try mount.run()
+        mount.waitUntilExit()
+        guard mount.terminationStatus == 0 else {
+            let errData = (mount.standardError as? Pipe)?.fileHandleForReading.readDataToEndOfFile()
+            let errMsg = errData.flatMap { String(data: $0, encoding: .utf8) } ?? "unknown"
+            throw ContainerError.unsupportedFormat("hmount failed: \(errMsg)")
+        }
+        defer {
+            let umount = Process()
+            umount.executableURL = URL(fileURLWithPath: humountPath)
+            umount.standardOutput = FileHandle.nullDevice
+            umount.standardError = FileHandle.nullDevice
+            try? umount.run()
+            umount.waitUntilExit()
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("retrorescue-hfs-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var results: [ExtractedFile] = []
+        for hfsPath in paths {
+            let safeName = hfsPath.replacingOccurrences(of: ":", with: "_")
+            let destPath = tempDir.appendingPathComponent(safeName).path
+            let cp = Process()
+            cp.executableURL = URL(fileURLWithPath: hcopyPath)
+            cp.arguments = ["-m", hfsPath, destPath]
+            cp.standardOutput = FileHandle.nullDevice
+            cp.standardError = FileHandle.nullDevice
+            try cp.run()
+            cp.waitUntilExit()
+            guard cp.terminationStatus == 0 else { continue }
+
+            let macBinData = try Data(contentsOf: URL(fileURLWithPath: destPath))
+            if let parsed = try? MacBinaryParser.parse(macBinData) {
+                results.append(parsed)
+            } else {
+                let name = (hfsPath as NSString).lastPathComponent
+                results.append(ExtractedFile(name: name, dataFork: macBinData, rsrcFork: Data()))
+            }
+        }
+        return results
+    }
 
     private static func extractHFS(imagePath: String,
                                    hmountPath: String,
