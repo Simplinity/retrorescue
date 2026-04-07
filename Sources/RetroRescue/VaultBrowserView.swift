@@ -466,6 +466,24 @@ struct VaultBrowserView: View {
         }
         .disabled(!FilePreviewHelper.canConvert(entry: entry))
 
+        Menu {
+            Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.name, forType: .string) } label: {
+                Label("Copy Name", systemImage: "doc.on.doc")
+            }
+            if let tc = entry.typeCreatorDisplay {
+                Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(tc, forType: .string) } label: {
+                    Label("Copy Type/Creator", systemImage: "doc.on.doc")
+                }
+            }
+            if let sha = entry.dataChecksum {
+                Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(sha, forType: .string) } label: {
+                    Label("Copy SHA-256", systemImage: "number")
+                }
+            }
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+
         Divider()
 
         Button(role: .destructive) {

@@ -107,6 +107,24 @@ struct ExtractedFileRow: View {
                     Label("Convert to Modern Format…", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(!FilePreviewHelper.canConvert(entry: node.entry))
+
+                Menu {
+                    Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(node.entry.name, forType: .string) } label: {
+                        Label("Copy Name", systemImage: "doc.on.doc")
+                    }
+                    if let tc = node.entry.typeCreatorDisplay {
+                        Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(tc, forType: .string) } label: {
+                            Label("Copy Type/Creator", systemImage: "doc.on.doc")
+                        }
+                    }
+                    if let sha = node.entry.dataChecksum {
+                        Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(sha, forType: .string) } label: {
+                            Label("Copy SHA-256", systemImage: "number")
+                        }
+                    }
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
             }
 
             Divider()
