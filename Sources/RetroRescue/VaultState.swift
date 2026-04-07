@@ -546,6 +546,12 @@ final class VaultState: ObservableObject {
         }
     }
 
+    /// Export a file to temp and reveal it in Finder.
+    func revealInFinder(_ entry: VaultEntry) {
+        guard let tempURL = writeTempFileForExport(entry) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([tempURL])
+    }
+
     /// Convert a file to a modern format (e.g. PICT → PNG).
     /// The converted file is added to the vault next to the original.
     func convertToModernFormat(entry: VaultEntry) {

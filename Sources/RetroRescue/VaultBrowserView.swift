@@ -446,7 +446,7 @@ struct VaultBrowserView: View {
         Button { state.exportToFinder(entry) } label: {
             Label("Export to Finder…", systemImage: "square.and.arrow.up")
         }
-        Button { showNotImplemented("Reveal in Finder") } label: {
+        Button { state.revealInFinder(entry) } label: {
             Label("Reveal in Finder", systemImage: "folder")
         }
         Button {
