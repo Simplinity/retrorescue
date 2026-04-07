@@ -12,6 +12,8 @@ struct ExtractedFileRow: View {
     var onOpen: ((VaultEntry) -> Void)?
     var onPreview: ((VaultEntry) -> Void)?
     var onConvert: ((VaultEntry) -> Void)?
+    var onExport: ((VaultEntry) -> Void)?
+    var onDragFile: ((VaultEntry) -> URL?)?
     var onMessage: ((String) -> Void)?
 
     var body: some View {
@@ -94,7 +96,7 @@ struct ExtractedFileRow: View {
             }
 
             if !node.entry.isDirectory {
-                Button { showNotImplemented("Export") } label: {
+                Button { onExport?(node.entry) } label: {
                     Label("Export to Finder…", systemImage: "square.and.arrow.up")
                 }
                 Button { onConvert?(node.entry) } label: {
@@ -108,6 +110,13 @@ struct ExtractedFileRow: View {
             Button(role: .destructive) { showNotImplemented("Delete") } label: {
                 Label("Delete", systemImage: "trash")
             }
+        }
+        .onDrag {
+            if !node.entry.isDirectory,
+               let url = onDragFile?(node.entry) {
+                return NSItemProvider(object: url as NSURL)
+            }
+            return NSItemProvider()
         }
     }
 

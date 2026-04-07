@@ -498,6 +498,54 @@ final class VaultState: ObservableObject {
 
     // MARK: - Convert to modern format
 
+    /// Write a vault entry to a temp file for dragging/Quick Look.
+    /// Restores resource fork via extended attribute if present.
+    func writeTempFileForExport(_ entry: VaultEntry) -> URL? {
+        guard let vault else { return nil }
+        do {
+            let tempDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("retrorescue-export")
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let destURL = tempDir.appendingPathComponent(entry.name)
+            // Remove old file if exists
+            try? FileManager.default.removeItem(at: destURL)
+            // Write data fork
+            let data = try vault.dataFork(for: entry.id)
+            try data.write(to: destURL)
+            // Write resource fork as extended attribute
+            if entry.hasResourceFork {
+                let rsrc = try vault.rsrcFork(for: entry.id)
+                if !rsrc.isEmpty {
+                    try destURL.withUnsafeFileSystemRepresentation { path in
+                        guard let path else { return }
+                        rsrc.withUnsafeBytes { buf in
+                            setxattr(path, "com.apple.ResourceFork", buf.baseAddress, rsrc.count, 0, 0)
+                        }
+                    }
+                }
+            }
+            return destURL
+        } catch {
+            self.error = "Export failed: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// Export a file to a user-chosen location via NSSavePanel.
+    func exportToFinder(_ entry: VaultEntry) {
+        guard let tempURL = writeTempFileForExport(entry) else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = entry.name
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destURL = panel.url else { return }
+        do {
+            try? FileManager.default.removeItem(at: destURL)
+            try FileManager.default.copyItem(at: tempURL, to: destURL)
+        } catch {
+            self.error = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
     /// Convert a file to a modern format (e.g. PICT → PNG).
     /// The converted file is added to the vault next to the original.
     func convertToModernFormat(entry: VaultEntry) {

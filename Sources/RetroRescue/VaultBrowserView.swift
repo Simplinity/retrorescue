@@ -49,6 +49,12 @@ struct VaultBrowserView: View {
                 )) { entry in
                     FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
                         .contextMenu { sidebarContextMenu(for: entry) }
+                        .onDrag {
+                            if let url = state.writeTempFileForExport(entry) {
+                                return NSItemProvider(object: url as NSURL)
+                            }
+                            return NSItemProvider()
+                        }
                 }
             }
             statusBar
@@ -268,6 +274,10 @@ struct VaultBrowserView: View {
                 state.previewFile(entry)
             } onConvert: { entry in
                 state.convertToModernFormat(entry: entry)
+            } onExport: { entry in
+                state.exportToFinder(entry)
+            } onDragFile: { entry in
+                state.writeTempFileForExport(entry)
             } onMessage: { msg in
                 state.error = msg
             }
@@ -433,7 +443,7 @@ struct VaultBrowserView: View {
 
         Divider()
 
-        Button { showNotImplemented("Export") } label: {
+        Button { state.exportToFinder(entry) } label: {
             Label("Export to Finder…", systemImage: "square.and.arrow.up")
         }
         Button { showNotImplemented("Reveal in Finder") } label: {
