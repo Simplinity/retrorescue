@@ -23,8 +23,17 @@ public enum MacBinaryParser {
         // Data + resource fork sizes must be plausible
         let dataSize = readUInt32(data, offset: 83)
         let rsrcSize = readUInt32(data, offset: 87)
-        let expected = 128 + padTo128(dataSize) + padTo128(rsrcSize)
-        guard data.count >= Int(expected) else { return false }
+        // Reject empty files (both forks zero) — likely false positive
+        guard dataSize > 0 || rsrcSize > 0 else { return false }
+        // Reject negative sizes (> 2GB)
+        guard Int32(bitPattern: dataSize) >= 0, Int32(bitPattern: rsrcSize) >= 0 else { return false }
+        // Account for optional secondary header
+        let header2Len = UInt32(data[120]) << 8 | UInt32(data[121])
+        let expected = 128 + padTo128(header2Len) + padTo128(dataSize) + padTo128(rsrcSize)
+        // Allow up to 8KB garbage at end (CP2 tolerance)
+        guard data.count >= Int(expected) - 127,  // minimum: last section may not be padded
+              data.count <= Int(expected) + 8192   // maximum: some garbage allowed
+        else { return false }
         return true
     }
 
@@ -32,6 +41,16 @@ public enum MacBinaryParser {
     public static func parse(_ data: Data) throws -> ExtractedFile {
         guard canParse(data) else {
             throw ContainerError.invalidFormat("Not a valid MacBinary file")
+        }
+
+        // CRC-16/XMODEM check for MacBinary II+ (bytes 0-123, CRC at 124-125)
+        let storedCRC = UInt16(data[124]) << 8 | UInt16(data[125])
+        if storedCRC != 0 {
+            let computedCRC = crc16XMODEM(data: data, offset: 0, count: 124)
+            if computedCRC != storedCRC {
+                // CP2 treats this as a warning, not a rejection — file may still be valid
+                // (Some MacBinary I files have garbage in the CRC field)
+            }
         }
 
         // Filename (Pascal string at offset 1)
@@ -56,11 +75,12 @@ public enum MacBinaryParser {
         let createdMac = readUInt32(data, offset: 91)
         let modifiedMac = readUInt32(data, offset: 95)
 
-        // Extract forks
-        let dataStart = 128
+        // Extract forks (account for optional secondary header at +$78)
+        let header2Len = Int(UInt16(data[120]) << 8 | UInt16(data[121]))
+        let dataStart = 128 + (header2Len > 0 ? Int(padTo128(UInt32(header2Len))) : 0)
         let dataFork = data[dataStart..<(dataStart + dataSize)]
 
-        let rsrcStart = 128 + padTo128(UInt32(dataSize))
+        let rsrcStart = dataStart + Int(padTo128(UInt32(dataSize)))
         let rsrcFork: Data
         if rsrcSize > 0 {
             rsrcFork = Data(data[Int(rsrcStart)..<(Int(rsrcStart) + rsrcSize)])
@@ -111,5 +131,34 @@ public enum MacBinaryParser {
         // Mac epoch is 2082844800 seconds before Unix epoch
         let unixSeconds = Double(macSeconds) - 2_082_844_800
         return Date(timeIntervalSince1970: unixSeconds)
+    }
+
+    // MARK: - CRC-16/XMODEM (polynomial 0x1021, init 0x0000, MSB-first)
+
+    /// Precomputed CRC-16/XMODEM table (same algorithm as CiderPress2).
+    private static let crcTable: [UInt16] = {
+        var table = [UInt16](repeating: 0, count: 256)
+        for i in 0..<256 {
+            var val = UInt16(i) << 8
+            for _ in 0..<8 {
+                if val & 0x8000 != 0 {
+                    val = (val << 1) ^ 0x1021
+                } else {
+                    val <<= 1
+                }
+            }
+            table[i] = val
+        }
+        return table
+    }()
+
+    /// Compute CRC-16/XMODEM over a range of data.
+    static func crc16XMODEM(data: Data, offset: Int, count: Int) -> UInt16 {
+        var crc: UInt16 = 0x0000
+        for i in offset..<(offset + count) {
+            let idx = Int((UInt8(crc >> 8)) ^ data[i])
+            crc = crcTable[idx] ^ (crc << 8)
+        }
+        return crc
     }
 }

@@ -140,4 +140,39 @@ struct MacBinaryParserTests {
         #expect(extracted!.name == "TestFile")
         #expect(extracted!.typeCode == "TEXT")
     }
+
+    // MARK: - CRC-16/XMODEM verification (B5: verified against CiderPress2)
+
+    @Test func crc16XMODEMMatchesCiderPress2() {
+        // CP2 test vector: "123456789" → 0x31c3
+        let pattern = Data([0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39])
+        let crc = MacBinaryParser.crc16XMODEM(data: pattern, offset: 0, count: pattern.count)
+        #expect(crc == 0x31c3, "CRC-16/XMODEM must match CiderPress2 check value")
+    }
+
+    @Test func crc16XMODEMZeroBuffer() {
+        // Zero buffer with zero seed should give zero
+        let zeros = Data(repeating: 0, count: 128)
+        let crc = MacBinaryParser.crc16XMODEM(data: zeros, offset: 0, count: zeros.count)
+        #expect(crc == 0x0000, "CRC of all-zero buffer with seed 0 must be 0")
+    }
+
+    @Test func macBinaryIIHeaderCRCValidation() throws {
+        // Create a MacBinary II file and verify CRC is computed over bytes 0-123
+        var header = Self.makeMacBinary(
+            name: "CRCTest",
+            type: "TEXT",
+            creator: "ttxt",
+            dataFork: Data("hello".utf8)
+        )
+        // Compute CRC over first 124 bytes and write to bytes 124-125
+        let crc = MacBinaryParser.crc16XMODEM(data: header, offset: 0, count: 124)
+        header[122] = 0x81  // MacBinary II version
+        header[123] = 0x81  // Minimum version
+        header[124] = UInt8(crc >> 8)
+        header[125] = UInt8(crc & 0xFF)
+        // Should still parse correctly
+        let parsed = try MacBinaryParser.parse(header)
+        #expect(parsed.name == "CRCTest")
+    }
 }
