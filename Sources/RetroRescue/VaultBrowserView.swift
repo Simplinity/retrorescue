@@ -404,6 +404,18 @@ struct VaultBrowserView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
 
+            // Historical context
+            if let info = FilePreviewHelper.fileTypeInfoDetailed(entry: entry) {
+                if let history = info.history {
+                    Text(history)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             // Text preview (only for text files)
             if let text = state.previewText {
                 Divider()
