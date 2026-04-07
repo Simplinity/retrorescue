@@ -349,9 +349,17 @@ struct VaultBrowserView: View {
         VStack(alignment: .leading, spacing: 6) {
             // File info bar — always shown
             HStack(spacing: 8) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.secondary)
+                Text(entry.name)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
                 if let desc = FilePreviewHelper.fileTypeDescription(entry: entry) {
+                    Text("—")
+                        .foregroundStyle(.tertiary)
                     Text(desc)
-                        .font(.callout.weight(.medium))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
                 if let tc = entry.typeCreatorDisplay {
                     Text(tc)
