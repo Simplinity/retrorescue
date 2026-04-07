@@ -10,7 +10,6 @@ public enum HFSExtractor {
     public static let supportedExtensions: Set<String> = [
         "img", "image", "dsk", "disk",
         "hfs", "hfv",
-        "mar",          // DART (Disk Archive/Retrieval Tool) — DiskCopy 4.2 variant
         "dart",         // DART alternate extension
     ]
 

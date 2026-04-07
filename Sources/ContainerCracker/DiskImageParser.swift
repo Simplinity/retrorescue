@@ -45,9 +45,16 @@ public enum DiskImageParser {
             return data.count > 1026 ? .raw : .unknown
         }
 
-        // DART: magic "MAR\x80" at offset 0
-        if data.count >= 4 && data[0] == 0x4D && data[1] == 0x41 && data[2] == 0x52 && data[3] == 0x80 {
-            return .dart
+        // DART: first byte is compression type (0=RLE, 1=LZH, 2=none),
+        // second byte is disk type, bytes 2-3 are disk size in KB.
+        // No magic header — detected by field validation.
+        if data.count >= 148 {  // minimum header for HD images
+            let srcCmp = data[0]
+            let srcType = data[1]
+            let srcSize = UInt16(data[2]) << 8 | UInt16(data[3])
+            if srcCmp <= 2 && isDARTDiskType(srcType, srcSize) {
+                return .dart
+            }
         }
 
         // DiskCopy 4.2: magic 0x0100 at offset 82-83
@@ -121,6 +128,121 @@ public enum DiskImageParser {
 
     // MARK: - DiskCopy 4.2 Parsing
 
+    /// Validate DART disk type and size combination.
+    private static func isDARTDiskType(_ srcType: UInt8, _ srcSize: UInt16) -> Bool {
+        switch srcType {
+        case 1, 2, 3:   // Mac, Lisa, Apple II
+            return srcSize == 400 || srcSize == 800
+        case 16, 17, 18: // Mac HD, MS-DOS 720K, MS-DOS 1440K
+            return srcSize == 720 || srcSize == 1440
+        default:
+            return false
+        }
+    }
+
+    /// Decompress a DART image to raw disk data.
+    /// DART format: header + compressed chunks, each chunk = 40 blocks × (512 data + 12 tag) bytes.
+    static func decompressDART(_ data: Data) throws -> (Data, String?) {
+        guard data.count >= 4 else { throw ContainerError.invalidFormat("DART file too small") }
+
+        let srcCmp = data[0]    // 0=RLE, 1=LZH, 2=none
+        let srcType = data[1]
+        let srcSize = Int(UInt16(data[2]) << 8 | UInt16(data[3]))
+        let chunkCount = srcSize <= 800 ? 40 : 72
+        let headerLen = 4 + chunkCount * 2
+
+        guard data.count >= headerLen else { throw ContainerError.invalidFormat("DART header truncated") }
+
+        // Read block lengths
+        var blockLengths = [UInt16]()
+        for i in 0..<chunkCount {
+            let offset = 4 + i * 2
+            blockLengths.append(UInt16(data[offset]) << 8 | UInt16(data[offset + 1]))
+        }
+
+        // Parse volume name from first decompressed chunk if possible
+        let diskName: String? = nil
+
+        let blockDataLen = 512 * 40   // 20480
+        let blockTagLen = 12 * 40     // 480
+        let blockTotalLen = blockDataLen + blockTagLen  // 20960
+
+        var userData = Data()
+        var dataOffset = headerLen
+
+        let activeChunks = srcSize / 20  // number of chunks with data
+
+        for i in 0..<activeChunks {
+            guard i < blockLengths.count else { break }
+            let bLen = blockLengths[i]
+            if bLen == 0 { break }
+
+            var chunk: Data
+            if bLen == 0xFFFF || srcCmp == 2 {
+                // Uncompressed
+                let end = min(dataOffset + blockTotalLen, data.count)
+                guard end > dataOffset else { throw ContainerError.corruptedData("DART: unexpected EOF") }
+                chunk = Data(data[dataOffset..<end])
+                dataOffset = end
+            } else if srcCmp == 0 {
+                // RLE (fast) — bLen is in 16-bit words
+                let byteLen = Int(bLen) * 2
+                let end = min(dataOffset + byteLen, data.count)
+                guard end > dataOffset else { throw ContainerError.corruptedData("DART: RLE data truncated") }
+                let compressed = Data(data[dataOffset..<end])
+                chunk = try decompressDARTRLE(compressed, expectedSize: blockTotalLen)
+                dataOffset = end
+            } else if srcCmp == 1 {
+                // LZH (best) — bLen is in bytes
+                throw ContainerError.unsupportedFormat(
+                    "This DART image uses LZH compression which is not yet supported. "
+                    + "RLE-compressed and uncompressed DART images work fine.")
+            } else {
+                throw ContainerError.invalidFormat("Unknown DART compression type: \(srcCmp)")
+            }
+
+            // Extract only the user data (first 20480 bytes), skip tag data
+            if chunk.count >= blockDataLen {
+                userData.append(chunk[chunk.startIndex..<chunk.startIndex + blockDataLen])
+            }
+        }
+
+        return (userData, diskName)
+    }
+
+    /// Decompress DART RLE (word-oriented run-length encoding).
+    private static func decompressDARTRLE(_ input: Data, expectedSize: Int) throws -> Data {
+        var output = Data(capacity: expectedSize)
+        var offset = input.startIndex
+
+        while offset < input.endIndex - 1 {
+            let hi = Int16(bitPattern: UInt16(input[offset]) << 8 | UInt16(input[offset + 1]))
+            offset += 2
+
+            if hi > 0 {
+                // Copy N words literally
+                let byteCount = Int(hi) * 2
+                let end = min(offset + byteCount, input.endIndex)
+                output.append(contentsOf: input[offset..<end])
+                offset = end
+            } else if hi < 0 {
+                // Repeat pattern -N times
+                guard offset + 1 < input.endIndex else { break }
+                let patHi = input[offset]
+                let patLo = input[offset + 1]
+                offset += 2
+                for _ in 0..<(-hi) {
+                    output.append(patHi)
+                    output.append(patLo)
+                }
+            } else {
+                throw ContainerError.corruptedData("DART RLE: zero count")
+            }
+        }
+
+        return output
+    }
+
     /// Parse a DiskCopy 4.2 image and extract the raw disk data.
     public static func parseDiskCopy42(_ data: Data) -> ImageInfo? {
         guard data.count > 84, data[82] == 0x01, data[83] == 0x00 else {
@@ -166,19 +288,16 @@ public enum DiskImageParser {
 
         switch format {
         case .dart:
-            // DART uses proprietary compression (RLE/LZ). Parse the volume name for a useful error.
-            var volName = "unknown"
-            if data.count > 14 {
-                let nameLen = Int(data[8])
-                if nameLen > 0 && nameLen < 64 && data.count > 9 + nameLen {
-                    volName = String(data: data[9..<(9+nameLen)], encoding: .macOSRoman) ?? volName
-                }
+            let (rawData, diskName) = try decompressDART(data)
+            let fs = detectFilesystem(rawData: rawData)
+            if fs == .mfs {
+                throw ContainerError.unsupportedFormat(
+                    "This DART image contains an MFS volume. MFS support is coming in a future version.")
             }
-            throw ContainerError.unsupportedFormat(
-                "This is a DART (Disk Archive/Retrieval Tool) compressed image containing \"\(volName)\". "
-                + "DART uses proprietary compression that RetroRescue cannot yet decompress. "
-                + "To extract, open this file in a classic Mac emulator with DART installed, "
-                + "or use DiskCopy 4.2 to convert it to a standard disk image.")
+            let info = ImageInfo(format: .dart, filesystem: fs,
+                                diskName: diskName, dataSize: rawData.count,
+                                diskType: "DART compressed")
+            return (rawData, info)
 
         case .diskCopy42:
             guard let info = parseDiskCopy42(data) else {

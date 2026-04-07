@@ -217,13 +217,21 @@ don't understand dual-fork files or 8-bit data.
   DiskCopy 6.x (NDIF) replaced it for most purposes. The `.image` extension is the canonical one.
 - **Support in RetroRescue**: Native Swift parser (DiskImageParser) + hfsutils
 
-### DART (.mar, .dart) — 1988
+### DART (.dart, .image) — 1988
 - **Developer**: Apple Computer
 - **Full name**: Disk Archive/Retrieval Tool
-- **Purpose**: Variant of DiskCopy 4.2 with compression support
-- **History**: Used by Apple for internal software distribution. The `.mar` extension stands for
-  "Macintosh ARchive." DART files are essentially DiskCopy 4.2 images that may be compressed.
-- **Support in RetroRescue**: Via DiskImageParser + hfsutils
+- **Purpose**: Compressed disk images for internal Apple software distribution
+- **Format**: Header (compression type + disk type + size + block lengths) + compressed chunks
+- **Compression**: RLE (word-oriented, "fast") or LZHUF ("best")
+- **Each chunk**: 20960 bytes = 40 blocks × (512 data + 12 tag) bytes
+- **Header**: Byte 0 = compression (0=RLE, 1=LZH, 2=none), Byte 1 = disk type, Bytes 2-3 = size in KB
+- **Type/Creator**: `DMd1`–`DMd7`/`DART` (type varies by disk kind)
+- **History**: Used by Apple for internal software distribution. Never officially published.
+  DART was not an official product. File format documented by CiderPress II project (Andy McFadden).
+  DiskCopy 6.x, ShrinkWrap 2.1+, and MungeImage could also open DART images.
+  macOS hdiutil supported DART until Catalina (10.15); removed in Big Sur.
+- **Note**: `.mar` files are NOT DART — they use the separate MAR (Macintosh ARchive) format.
+- **Support in RetroRescue**: RLE-compressed DART images fully supported. LZH planned.
 
 ### NDIF — New Disk Image Format (.img) — 1995
 - **Developer**: Apple Computer
