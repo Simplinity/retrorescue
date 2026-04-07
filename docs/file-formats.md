@@ -190,33 +190,37 @@ don't understand dual-fork files or 8-bit data.
 
 ## 4. Disk Image Formats
 
-### DiskCopy 4.2 (.image, .img) — 1988
+### DiskCopy 4.2 (.image, .img, .dc42) — 1988
 - **Developer**: Apple Computer (Steve Christensen)
 - **Purpose**: Create exact copies of floppy disks for distribution and backup
-- **Format**: 84-byte header + raw sector data + optional tag data
-- **Header structure**:
-  - Byte 0: Disk name length (Pascal string)
-  - Bytes 1-63: Disk name
-  - Bytes 64-67: Data size (big-endian uint32)
-  - Bytes 68-71: Tag size
-  - Bytes 72-75: Data checksum
-  - Bytes 76-79: Tag checksum
-  - Byte 80: Disk encoding (0x00=400K GCR, 0x01=800K GCR, 0x02=720K MFM, 0x03=1440K MFM)
-  - Byte 81: Format byte (GCR nybble)
-  - Bytes 82-83: Magic number **0x0100** (identifies DiskCopy 4.2)
+- **Reference**: CiderPress2 DiskCopy-notes.md, DiscFerret wiki
+- **Type/Creator**: `dImg`/`dCpy`
+- **Format**: 84-byte header + user data + tag data
+- **Header structure** (all big-endian):
+  ```
+  +$00 /64: diskName — Pascal string (length byte + up to 63 chars, Mac OS Roman)
+  +$40 / 4: dataSize — length of user data in bytes (must be multiple of 512)
+  +$44 / 4: tagSize — length of tag data (multiple of 12; may be zero)
+  +$48 / 4: dataChecksum — custom checksum of userData area
+  +$4c / 4: tagChecksum — custom checksum of tagData (first 12 bytes excluded!)
+  +$50 / 1: diskFormat — 0=400K GCR, 1=800K GCR, 2=720K MFM, 3=1440K MFM
+  +$51 / 1: formatByte — $12=400K, $22=800K Mac, $24=800K IIgs
+  +$52 / 2: private — must be $0100 (identifies DiskCopy 4.2)
+  +$54 / n: userData — sequential 512-byte blocks
+  +xxx / n: tagData — 12 bytes per block (important for Lisa, mostly zero on Mac)
+  ```
+- **Checksum algorithm**: Custom (not CRC). Rotate-and-add on 32-bit values.
+  NOTE: First 12 bytes of tag data excluded from tag checksum (backward compat bug).
 - **Disk sizes**:
   - 400K: 409,600 bytes (original Mac 128K/512K single-sided floppy)
   - 800K: 819,200 bytes (Mac Plus double-sided floppy)
   - 720K: 737,280 bytes (PC MFM format)
   - 1440K: 1,474,560 bytes (High Density, SuperDrive)
-- **Tag data**: 12 bytes per 512-byte sector, contains MFS filesystem metadata.
-  Important for Lisa disks, mostly ignored on Mac.
-- **Type/Creator**: `dImg`/`dCpy`
+- **Resource fork**: Contains copy of checksums. Not required; often lost in transit.
 - **History**: DiskCopy 4.2 was the most common format for distributing floppy disk images.
-  Runs on System 4.1 through Mac OS 9. Cannot mount images (only copy to real floppy).
-  DiskCopy 6.x (NDIF) replaced it for most purposes. The `.image` extension is the canonical one.
+  DiskCopy 6.x (NDIF) replaced it. The `.image` extension is canonical.
+  macOS dropped DiskCopy 4.2 support after Catalina (10.15).
 - **Support in RetroRescue**: Native Swift parser (DiskImageParser) + hfsutils
-
 ### DART (.dart, .image) — 1988
 - **Developer**: Apple Computer
 - **Full name**: Disk Archive/Retrieval Tool
@@ -267,22 +271,57 @@ don't understand dual-fork files or 8-bit data.
 ## 5. File Systems
 
 ### MFS — Macintosh File System (1984)
-- **Magic**: 0xD2D7 at offset 1024 from volume start
+- **Magic**: 0xD2D7 at offset 1024 from volume start (high ASCII "RW")
+- **Reference**: Inside Macintosh Vol. II ch.4, CiderPress2 MFS-notes.md
 - **Used on**: Original Macintosh 128K, 512K (400K single-sided floppies)
-- **Features**: Flat directory structure (no nested folders!), dual forks, type/creator codes
-- **History**: The first Mac filesystem. Folders in the Finder were an illusion maintained by
-  the Desktop Database — the filesystem itself had no directory hierarchy. Replaced by HFS in 1985.
-- **Support in RetroRescue**: Detected, not yet extractable (planned for future)
+- **Features**: FLAT directory (no nested folders!), dual forks, type/creator codes
+- **Structure**:
+  - Blocks 0-1: Boot code
+  - Blocks 2-3: Master Directory Block (volume info + 12-bit allocation block map)
+  - Blocks 4-15: File directory (fixed size, ~12 blocks on 400K)
+  - Blocks 16+: Allocation blocks with file data
+  - Last 2 blocks: MDB backup
+- **Volume Info** (at block 2):
+  ```
+  +$00 / 2: drSigWord — 0xD2D7
+  +$02 / 4: drCrDate — creation date (seconds since Jan 1, 1904)
+  +$0c / 2: drNmFls — number of files
+  +$12 / 2: drNmAlBlks — number of allocation blocks
+  +$14 / 4: drAlBlkSiz — allocation block size in bytes
+  +$24 /28: drVN — volume name (Pascal string)
+  ```
+- **Block map**: Array of 12-bit values. 0=free, 1=end of chain, 2+=next block number.
+- **Directory entries**: Variable size (51 bytes + filename), cannot cross block boundaries.
+  Each entry has: type/creator, data fork start/size, rsrc fork start/size, dates, filename.
+- **Filenames**: Up to 255 chars (64K ROM), 31 chars recommended (128K ROM+). Mac OS Roman.
+- **Note**: Folders in the Finder were an illusion maintained by the Desktop Database.
+- **History**: First Mac filesystem (1984). Replaced by HFS in 1986. OS support until Mac OS 8.1.
+- **Support in RetroRescue**: Detected, not yet extractable. Planned via native Swift parser.
 
 ### HFS — Hierarchical File System (1985)
 - **Magic**: 0x4244 ("BD") at offset 1024 from volume start
+- **Reference**: Inside Macintosh: Files ch.2, CiderPress2 HFS-notes.md (700+ lines)
 - **Used on**: Mac Plus through Mac OS 9, most classic Mac floppies and hard drives
 - **Features**: True directory hierarchy, dual forks, type/creator codes, Finder info,
-  31-character filenames, catalog B-tree
+  31-character filenames (case-preserving, case-insensitive), B*-tree catalog
 - **Max volume size**: 2 GB (increased to 2 TB with System 7.5)
-- **History**: Introduced with the Macintosh Plus and the HD20 hard drive in 1985.
-  The standard Mac filesystem for 13 years. macOS dropped HFS read support in Catalina (2019).
-- **Support in RetroRescue**: Via bundled hfsutils (hmount/hls/hcopy)
+- **Key structures**:
+  - Block 0-1: Boot blocks (signature `LK` = 0x4C4B for bootable)
+  - Block 2: Master Directory Block (MDB, 162 bytes, signature `BD` = 0x4244)
+  - Block 3+: Volume bitmap (1 bit per allocation block)
+  - Catalog file: B*-tree with files, directories, and thread records
+  - Extents overflow: B*-tree for files with >3 extents
+  - Second-to-last block: MDB backup copy
+- **MDB key fields**: volume name, allocation block size/count, catalog tree location,
+  free blocks, next CNID, creation/modification dates
+- **B*-tree**: 512 bytes/node, header node → index nodes → leaf nodes, singly-linked leaves
+- **Catalog keys**: parent CNID + filename, sorted by CNID then case-insensitive name
+- **4 record types**: file (102 bytes), directory (70 bytes), file thread, directory thread
+- **CNIDs**: 0=invalid, 1=root parent, 2=root dir, 3=extents file, 4=catalog file, 5=bad blocks
+- **Timestamps**: Unsigned 32-bit, seconds since Jan 1, 1904, local time. Rolls over Feb 6, 2040.
+- **History**: Introduced with the Macintosh Plus and HD20 hard drive in 1985.
+  Standard Mac filesystem for 13 years. macOS dropped HFS read support in Catalina (2019).
+- **Support in RetroRescue**: Via bundled hfsutils. Native Swift reader planned for v2.
 
 ### HFS+ — HFS Plus / Mac OS Extended (1998)
 - **Magic**: 0x482B ("H+") at offset 1024 from volume start
@@ -294,6 +333,27 @@ don't understand dual-fork files or 8-bit data.
 ### APFS — Apple File System (2017)
 - **Used on**: macOS High Sierra and later, iOS 10.3+
 - **Not relevant for classic Mac file preservation**
+
+### Apple Partition Map (APM)
+- **Reference**: Inside Macintosh: Devices ch.3, CiderPress2 APM-notes.md
+- **Purpose**: Partition scheme for Mac hard drives, CD-ROMs, and other block devices
+- **Used on**: Macintosh II (1987) through Intel Macs (replaced by GPT)
+- **Structure**:
+  - Block 0: Driver Descriptor Record (DDR) — signature `ER` (0x4552), block size, block count
+  - Block 1+: Partition entries — signature `PM` (0x504D), one per block
+  - Each entry: start block, block count, name (32 chars), type (32 chars)
+- **Partition types**:
+  - `Apple_HFS` — HFS filesystem (the one we want)
+  - `Apple_MFS` — MFS filesystem (original 64K ROM Macs)
+  - `Apple_partition_map` — the map itself (self-referential)
+  - `Apple_Driver` / `Apple_Driver43` — disk drivers
+  - `Apple_Free` — unused space
+  - `Apple_Scratch` — empty
+  - `Apple_PRODOS` — ProDOS (Apple II)
+  - `Apple_Unix_SVR2` — A/UX (Apple's Unix)
+- **Real-world issues**: Third-party formatters produce bad DDR values (zero block count/size).
+  CD-ROMs may have oversized or out-of-bounds partitions. Tolerance is required.
+- **Support in RetroRescue**: Not yet implemented (CRITICAL gap for CD-ROMs)
 
 ---
 
@@ -422,6 +482,66 @@ don't understand dual-fork files or 8-bit data.
 
 ---
 
+---
+
+## 7b. Resource Fork Binary Format
+
+> Reference: Inside Macintosh: More Macintosh Toolbox p.1-121, CiderPress2 ResourceFork-notes.md
+
+Every classic Mac file can have a resource fork containing structured data. The format is:
+
+### Overall Layout
+```
++$00  / 4: offset from file start to resource data
++$04  / 4: offset from file start to resource map
++$08  / 4: length of resource data
++$0c  / 4: length of resource map
++$10  /112: reserved (used by AppleShare for metadata)
++$80  /128: available for application data
++$100 / N: resource data area
++xxx  / N: resource map
+```
+
+### Resource Data Area
+Each resource stored sequentially:
+```
++$00 / 4: length of resource data that follows
++$04 / N: resource data bytes
+```
+
+### Resource Map
+```
++$00 /16: reserved (copy of header when loaded to memory)
++$10 / 4: reserved (handle to next resource map)
++$14 / 2: reserved (file reference number)
++$16 / 2: resource file attributes
++$18 / 2: offset from map start to type list
++$1a / 2: offset from map start to name list
+```
+
+### Type List
+Starts with count-1 (16-bit), then per type:
+```
++$00 / 4: resource type (e.g. "ICON", "snd ", "STR#")
++$04 / 2: count of resources of this type, minus 1
++$06 / 2: offset from type list start to reference list
+```
+
+### Reference List (per resource)
+```
++$00 / 2: resource ID (signed 16-bit)
++$02 / 2: offset to name in name list (-1 if no name)
++$04 / 1: resource attributes (locked, purgeable, preload, etc.)
++$05 / 3: offset from data area start to this resource's data
++$08 / 4: reserved (handle when loaded)
+```
+
+### Key Notes
+- All multi-byte values are signed big-endian
+- 3-byte data offset limits resource forks to 16MB
+- 4-byte resource type, 2-byte resource ID (unlike Apple IIgs which uses 2/4)
+- Resource attributes: bit 6=sysHeap, 5=purgeable, 4=locked, 3=protected, 2=preload, 1=changed
+
 ## 8. Classic Mac File Types by Category
 
 ### Text & Documents
@@ -439,7 +559,7 @@ don't understand dual-fork files or 8-bit data.
 | Type | Extension | Description | Previewable |
 |------|-----------|-------------|-------------|
 | PICT | .pct, .pict | QuickDraw picture | Via sips → PNG |
-| PNTG | .pntg | MacPaint (1-bit, 576×720) | Needs converter |
+| PNTG | .pntg, .mac | MacPaint (1-bit, 576×720) | Via PackBits decoder |
 | TIFF | .tif, .tiff | Tagged Image File Format | Via Quick Look |
 | JPEG | .jpg, .jpeg | JPEG | Via Quick Look |
 | GIFf | .gif | GIF | Via Quick Look |
