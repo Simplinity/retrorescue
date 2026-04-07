@@ -11,6 +11,7 @@ public enum DiskImageParser {
     /// Detected disk image format.
     public enum Format: String {
         case diskCopy42 = "DiskCopy 4.2"
+        case dart = "DART (Disk Archive/Retrieval Tool)"
         case ndif = "NDIF (DiskCopy 6.x)"
         case udif = "UDIF (.dmg)"
         case iso9660 = "ISO 9660"
@@ -42,6 +43,11 @@ public enum DiskImageParser {
     public static func detect(data: Data) -> Format {
         guard data.count > 84 else {
             return data.count > 1026 ? .raw : .unknown
+        }
+
+        // DART: magic "MAR\x80" at offset 0
+        if data.count >= 4 && data[0] == 0x4D && data[1] == 0x41 && data[2] == 0x52 && data[3] == 0x80 {
+            return .dart
         }
 
         // DiskCopy 4.2: magic 0x0100 at offset 82-83
@@ -159,6 +165,21 @@ public enum DiskImageParser {
         let format = detect(data: data)
 
         switch format {
+        case .dart:
+            // DART uses proprietary compression (RLE/LZ). Parse the volume name for a useful error.
+            var volName = "unknown"
+            if data.count > 14 {
+                let nameLen = Int(data[8])
+                if nameLen > 0 && nameLen < 64 && data.count > 9 + nameLen {
+                    volName = String(data: data[9..<(9+nameLen)], encoding: .macOSRoman) ?? volName
+                }
+            }
+            throw ContainerError.unsupportedFormat(
+                "This is a DART (Disk Archive/Retrieval Tool) compressed image containing \"\(volName)\". "
+                + "DART uses proprietary compression that RetroRescue cannot yet decompress. "
+                + "To extract, open this file in a classic Mac emulator with DART installed, "
+                + "or use DiskCopy 4.2 to convert it to a standard disk image.")
+
         case .diskCopy42:
             guard let info = parseDiskCopy42(data) else {
                 throw ContainerError.invalidFormat("Invalid DiskCopy 4.2 image")
