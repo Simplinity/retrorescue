@@ -13,40 +13,54 @@ struct ExtractedFileRow: View {
     var onMessage: ((String) -> Void)?
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
+            // Column 1: Icon + Name (flexible)
             Image(systemName: iconName)
                 .foregroundStyle(iconColor)
                 .frame(width: 16)
 
             Text(node.entry.name)
                 .lineLimit(1)
+                .truncationMode(.middle)
 
-            Spacer()
+            Spacer(minLength: 4)
 
+            // Column 2: Type/Creator (fixed width)
+            if let tc = node.entry.typeCreatorDisplay {
+                Text(tc)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .leading)
+            } else {
+                Spacer().frame(width: 80)
+            }
+
+            // Column 3: Size (fixed width, right-aligned)
             if !node.entry.isDirectory {
-                if let tc = node.entry.typeCreatorDisplay {
-                    Text(tc)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
                 Text(ByteCountFormatter.string(
                     fromByteCount: node.entry.dataForkSize, countStyle: .file
                 ))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+                .frame(width: 60, alignment: .trailing)
+            } else {
+                Spacer().frame(width: 60)
+            }
 
+            // Column 4: Indicators (fixed width)
+            HStack(spacing: 4) {
                 if node.entry.hasResourceFork {
                     Image(systemName: "puzzlepiece.extension")
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }
+                if node.isExtractable {
+                    Image(systemName: "archivebox")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
             }
-
-            if node.isExtractable {
-                Image(systemName: "archivebox")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
+            .frame(width: 30, alignment: .trailing)
         }
         .contextMenu {
             if !node.entry.isDirectory {

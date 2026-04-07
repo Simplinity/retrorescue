@@ -346,10 +346,27 @@ struct VaultBrowserView: View {
     // MARK: - File Preview
 
     private func filePreviewSection(_ entry: VaultEntry) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label(entry.name, systemImage: "doc.text.magnifyingglass")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 6) {
+            // File info bar — always shown
+            HStack(spacing: 8) {
+                if let desc = FilePreviewHelper.fileTypeDescription(entry: entry) {
+                    Text(desc)
+                        .font(.callout.weight(.medium))
+                }
+                if let tc = entry.typeCreatorDisplay {
+                    Text(tc)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if entry.hasResourceFork {
+                    Label(ByteCountFormatter.string(fromByteCount: entry.rsrcForkSize, countStyle: .file),
+                          systemImage: "puzzlepiece.extension")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 Spacer()
                 Button {
                     state.previewingEntry = nil
@@ -361,9 +378,11 @@ struct VaultBrowserView: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal)
-            .padding(.top, 8)
+            .padding(.top, 6)
 
+            // Text preview content (only for text-previewable files)
             if let text = state.previewText {
+                Divider()
                 ScrollView {
                     Text(text)
                         .font(.system(.body, design: .monospaced))
@@ -371,16 +390,11 @@ struct VaultBrowserView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal)
                 }
-                .frame(minHeight: 150, maxHeight: 300)
-            } else {
-                Text("No text preview available. Use Quick Look or Open for this file type.")
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
+                .frame(minHeight: 100, maxHeight: 250)
             }
         }
         .background(.quaternary.opacity(0.2))
-        .cornerRadius(8)
-        .padding(.horizontal)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Actions

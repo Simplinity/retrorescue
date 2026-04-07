@@ -195,10 +195,13 @@ final class VaultState: ObservableObject {
             return
         }
 
+        // Always set the previewing entry for the info bar
+        previewingEntry = entry
+
+        // Load text content if previewable
         if FilePreviewHelper.isTextPreviewable(entry: entry) {
-            previewFile(entry)
+            previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
         } else {
-            previewingEntry = nil
             previewText = nil
         }
     }
