@@ -29,6 +29,7 @@ public enum DiskImageParser {
         case mfs = "MFS"
         case hfsPlus = "HFS+"
         case proDOS = "ProDOS"
+        case dos33 = "DOS 3.3"
         case unknown = "Unknown"
     }
 
@@ -153,6 +154,9 @@ public enum DiskImageParser {
             let stByte = rawData[2 * 512 + 4]
             if (stByte >> 4) == 0x0F { return .proDOS }
         }
+        // Check for DOS 3.3: VTOC at T17/S0 (offset 69632 for 16-sector disks)
+        if DOSReader.isDOS(rawData, sectorsPerTrack: 16) { return .dos33 }
+        if DOSReader.isDOS(rawData, sectorsPerTrack: 13) { return .dos33 }
         return .unknown
     }
 

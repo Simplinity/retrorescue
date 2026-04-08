@@ -58,6 +58,14 @@ public enum HFSExtractor {
             return (items, volName)
         }
 
+        // DOS 3.x volumes: list via native DOSReader
+        if info.filesystem == .dos33 {
+            let spt = rawData.count == 116_480 ? 13 : 16  // 13-sector = DOS 3.2
+            let (volNum, files) = try DOSReader.extractAll(from: rawData, sectorsPerTrack: spt)
+            let items = files.map { HFSItem(name: $0.name, path: $0.name, isDirectory: false) }
+            return (items, "DOS VOL \(volNum)")
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat(
                 "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem.")
@@ -147,6 +155,14 @@ public enum HFSExtractor {
             return files.filter { selectedSet.contains($0.name) }
         }
 
+        // DOS 3.x volumes: extract selected via native DOSReader
+        if info.filesystem == .dos33 {
+            let spt = rawData.count == 116_480 ? 13 : 16
+            let (_, files) = try DOSReader.extractAll(from: rawData, sectorsPerTrack: spt)
+            let selectedSet = Set(selectedPaths)
+            return files.filter { selectedSet.contains($0.name) }
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat("Not an HFS or MFS volume.")
         }
@@ -179,6 +195,13 @@ public enum HFSExtractor {
         // ProDOS volumes: use native ProDOSReader
         if info.filesystem == .proDOS {
             let (_, files) = try ProDOSReader.extractAll(from: rawData)
+            return files
+        }
+
+        // DOS 3.x volumes: use native DOSReader
+        if info.filesystem == .dos33 {
+            let spt = rawData.count == 116_480 ? 13 : 16
+            let (_, files) = try DOSReader.extractAll(from: rawData, sectorsPerTrack: spt)
             return files
         }
 
