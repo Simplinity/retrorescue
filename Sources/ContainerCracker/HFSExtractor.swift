@@ -43,6 +43,14 @@ public enum HFSExtractor {
                                     hlsPath: String,
                                     humountPath: String) throws -> (items: [HFSItem], volumeName: String?) {
         let (rawData, info) = try DiskImageParser.extractRawData(from: imageURL)
+
+        // MFS volumes: list via native MFSReader
+        if info.filesystem == .mfs {
+            let (volName, files) = try MFSReader.extractAll(from: rawData)
+            let items = files.map { HFSItem(name: $0.name, path: $0.name, isDirectory: false) }
+            return (items, volName)
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat(
                 "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem.")
@@ -117,8 +125,16 @@ public enum HFSExtractor {
                                        hcopyPath: String,
                                        humountPath: String) throws -> [ExtractedFile] {
         let (rawData, info) = try DiskImageParser.extractRawData(from: imageURL)
+
+        // MFS volumes: extract selected via native MFSReader
+        if info.filesystem == .mfs {
+            let (_, files) = try MFSReader.extractAll(from: rawData)
+            let selectedSet = Set(selectedPaths)
+            return files.filter { selectedSet.contains($0.name) }
+        }
+
         guard info.filesystem == .hfs else {
-            throw ContainerError.unsupportedFormat("Not an HFS volume.")
+            throw ContainerError.unsupportedFormat("Not an HFS or MFS volume.")
         }
         let rawFile = try DiskImageParser.writeRawTemp(rawData)
         defer { try? FileManager.default.removeItem(at: rawFile) }
@@ -140,10 +156,16 @@ public enum HFSExtractor {
         // Parse the disk image and get raw HFS data
         let (rawData, info) = try DiskImageParser.extractRawData(from: imageURL)
 
+        // MFS volumes: use native MFSReader (no hfsutils needed)
+        if info.filesystem == .mfs {
+            let (_, files) = try MFSReader.extractAll(from: rawData)
+            return files
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat(
                 "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem. "
-                + "Only HFS volumes are currently supported.")
+                + "Only HFS and MFS volumes are currently supported.")
         }
 
         // Write raw data to temp file for hfsutils

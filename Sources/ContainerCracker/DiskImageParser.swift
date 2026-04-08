@@ -456,10 +456,6 @@ public enum DiskImageParser {
         case .dart:
             let (rawData, diskName) = try decompressDART(data)
             let fs = detectFilesystem(rawData: rawData)
-            if fs == .mfs {
-                throw ContainerError.unsupportedFormat(
-                    "This DART image contains an MFS volume. MFS support is coming in a future version.")
-            }
             let info = ImageInfo(format: .dart, filesystem: fs,
                                 diskName: diskName, dataSize: rawData.count,
                                 diskType: "DART compressed")
@@ -468,11 +464,6 @@ public enum DiskImageParser {
         case .diskCopy42:
             guard let info = parseDiskCopy42(data) else {
                 throw ContainerError.invalidFormat("Invalid DiskCopy 4.2 image")
-            }
-            if info.filesystem == .mfs {
-                throw ContainerError.unsupportedFormat(
-                    "This is an MFS volume (\(info.diskType), \"\(info.diskName ?? "?")\") "
-                    + "from the original 128K/512K Macintosh. MFS support is coming in a future version.")
             }
             let end = min(84 + info.dataSize, data.count)
             return (Data(data[84..<end]), info)
@@ -521,10 +512,6 @@ public enum DiskImageParser {
 
         case .raw:
             let fs = detectFilesystem(rawData: data)
-            if fs == .mfs {
-                throw ContainerError.unsupportedFormat(
-                    "This is an MFS (Macintosh File System) volume. MFS support is coming in a future version.")
-            }
             let info = ImageInfo(format: .raw, filesystem: fs,
                                 diskName: nil, dataSize: data.count,
                                 diskType: "Raw image")
