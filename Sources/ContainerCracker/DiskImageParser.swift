@@ -195,10 +195,13 @@ public enum DiskImageParser {
                 chunk = try decompressDARTRLE(compressed, expectedSize: blockTotalLen)
                 dataOffset = end
             } else if srcCmp == 1 {
-                // LZH (best) — bLen is in bytes
-                throw ContainerError.unsupportedFormat(
-                    "This DART image uses LZH compression which is not yet supported. "
-                    + "RLE-compressed and uncompressed DART images work fine.")
+                // LZH (best) — bLen is compressed size in bytes
+                let byteLen = Int(bLen)
+                let end = min(dataOffset + byteLen, data.count)
+                guard end > dataOffset else { throw ContainerError.corruptedData("DART: LZH data truncated") }
+                let compressed = Data(data[dataOffset..<end])
+                chunk = try LZHufDecompressor.decompress(compressed, expectedSize: blockTotalLen, initValue: 0x00)
+                dataOffset = end
             } else {
                 throw ContainerError.invalidFormat("Unknown DART compression type: \(srcCmp)")
             }
