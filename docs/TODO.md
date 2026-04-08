@@ -284,7 +284,7 @@
 | Q8 | hdiutil (macOS built-in) | ✅ |
 | Q9 | lsar override path from ToolChain | ✅ |
 | Q10 | Remove hfsutils dependency (native Swift HFS) | 🔮 v2 |
-| Q11 | ffmpeg optional dependency (video transcoding) | 🔮 v2 |
+| Q11 | ffmpeg optional dependency (video transcoding) | 🔮 v2 — as optional download (~80MB), not bundled |
 
 ## R. TESTS
 
