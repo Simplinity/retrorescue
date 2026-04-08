@@ -15,6 +15,7 @@ public enum DiskImageParser {
         case twoIMG = "2IMG (Universal Disk Image)"
         case woz = "WOZ (Applesauce)"
         case moof = "MOOF (Macintosh flux image)"
+        case apm = "Apple Partition Map"
         case ndif = "NDIF (DiskCopy 6.x)"
         case udif = "UDIF (.dmg)"
         case iso9660 = "ISO 9660"
@@ -84,6 +85,11 @@ public enum DiskImageParser {
         if data.count >= 12 && data[0] == 0x4D && data[1] == 0x4F
            && data[2] == 0x4F && data[3] == 0x46 {
             return .moof
+        }
+
+        // APM: DDR signature 'ER' (0x4552) at block 0 + 'PM' (0x504D) at block 1
+        if data.count >= 1024 && APMParser.isAPM(data) {
+            return .apm
         }
 
         // DiskCopy 4.2: magic 0x0100 at offset 82-83
@@ -514,6 +520,21 @@ public enum DiskImageParser {
                                 diskName: nil, dataSize: data.count,
                                 diskType: "Hybrid ISO 9660/HFS disc")
             return (data, info)
+
+        case .apm:
+            // Apple Partition Map: find the best data partition (HFS > MFS > ProDOS)
+            guard let (partData, partFS) = APMParser.findBestPartition(data) else {
+                throw ContainerError.unsupportedFormat(
+                    "APM disk image found but no usable partition (HFS/MFS/ProDOS) detected.")
+            }
+            let partitions = (try? APMParser.parsePartitions(data)) ?? []
+            let partNames = partitions.filter { !$0.isFree && !$0.isPartitionMap && !$0.isDriver }
+                .map { "\($0.name) (\($0.type))" }
+            let info = ImageInfo(format: .apm, filesystem: partFS,
+                                diskName: partNames.first,
+                                dataSize: partData.count,
+                                diskType: "APM — \(partitions.count) partitions")
+            return (partData, info)
 
         case .twoIMG:
             guard let info = parse2IMG(data) else {
