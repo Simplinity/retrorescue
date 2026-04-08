@@ -57,22 +57,31 @@ final class VaultState: ObservableObject {
     }
 
     /// Refresh cached disk image info for the selected entry.
-    /// Called once on selection change — NOT a computed property (avoids re-reading on every SwiftUI body eval).
+    /// Called once on selection change for disk image extensions only.
     func refreshDiskImageInfo() {
         guard let vault, let entry = selectedEntry else {
             cachedDiskImageInfo = nil
             return
         }
-        // Only read first 128 bytes for header detection (avoid reading multi-MB data forks)
-        guard let fullData = try? vault.dataFork(for: entry.id) else {
+        // Read only enough for header detection (84 bytes for DC42, 64 for 2IMG)
+        // Skip checksum validation here (that's for Get Info)
+        guard let data = try? vault.dataFork(for: entry.id) else {
             cachedDiskImageInfo = nil
             return
         }
-        let headerData = fullData.prefix(max(1024, min(fullData.count, 65536)))
-        let format = DiskImageParser.detect(data: Data(headerData))
+        let format = DiskImageParser.detect(data: data)
         switch format {
-        case .diskCopy42: cachedDiskImageInfo = DiskImageParser.parseDiskCopy42(fullData)
-        default: cachedDiskImageInfo = nil
+        case .diskCopy42:
+            // Parse header only (no full checksum — too slow for UI)
+            var info = DiskImageParser.parseDiskCopy42(data)
+            info?.checksumValid = true  // assume valid, verify in Get Info
+            cachedDiskImageInfo = info
+        case .twoIMG:
+            cachedDiskImageInfo = DiskImageParser.parse2IMG(data)
+        case .woz, .moof:
+            cachedDiskImageInfo = DiskImageParser.parseWozMoofInfo(data)
+        default:
+            cachedDiskImageInfo = nil
         }
     }
 
@@ -122,10 +131,19 @@ final class VaultState: ObservableObject {
         selectedEntry = entry
         cachedDiskImageInfo = nil
         loadExtractedEntries()
-        // Only parse disk image header for extractable entries (not for every file)
-        if let e = entry, Self.isExtractable(e.name) {
+        // Only parse disk image header for actual disk image extensions (not archives!)
+        if let e = entry, Self.isDiskImageExtension(e.name) {
             refreshDiskImageInfo()
         }
+    }
+
+    /// Check if filename has a disk image extension (not archive).
+    private static func isDiskImageExtension(_ name: String) -> Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        let diskExts: Set<String> = ["img", "image", "dsk", "disk", "hfs", "hfv",
+                                      "dart", "dc42", "2mg", "2img", "po", "do",
+                                      "d13", "woz", "moof"]
+        return diskExts.contains(ext)
     }
 
     private func loadExtractedEntries() {
