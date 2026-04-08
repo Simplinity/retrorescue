@@ -2,6 +2,20 @@
 # O1: Code signing + notarization script for RetroRescue
 # Usage: ./scripts/sign-and-notarize.sh [--skip-notarize]
 #
+# ⚠️  SETUP REQUIRED (one-time):
+#   1. Request a "Developer ID Application" certificate at https://developer.apple.com
+#      → Certificates, Identifiers & Profiles → Certificates → "+" → Developer ID Application
+#      → Download and install in Keychain Access
+#   2. Store notary credentials:
+#      xcrun notarytool store-credentials "RetroRescue" \
+#        --apple-id "your@email.com" \
+#        --team-id "YOUR_TEAM_ID" \
+#        --password "app-specific-password"
+#      (Generate app-specific password at https://appleid.apple.com → Security → App-Specific Passwords)
+#   3. Run: ./scripts/sign-and-notarize.sh
+#
+# Without these steps, the script falls back to local Apple Development signing (--skip-notarize).
+#
 # Prerequisites:
 #   1. "Developer ID Application" certificate in Keychain
 #   2. App-specific password stored: xcrun notarytool store-credentials "RetroRescue"
