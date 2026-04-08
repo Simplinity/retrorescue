@@ -73,6 +73,27 @@ public enum HFSExtractor {
             return (items, "CP/M")
         }
 
+        // Apple Pascal volumes
+        if info.filesystem == .pascal {
+            let (volName, files) = try PascalReader.extractAll(from: rawData)
+            let items = files.map { HFSItem(name: $0.name, path: $0.name, isDirectory: false) }
+            return (items, volName)
+        }
+
+        // Gutenberg WP volumes
+        if info.filesystem == .gutenberg {
+            let files = try GutenbergReader.extractAll(from: rawData)
+            let items = files.map { HFSItem(name: $0.name, path: $0.name, isDirectory: false) }
+            return (items, "Gutenberg")
+        }
+
+        // RDOS (SSI games) volumes
+        if info.filesystem == .rdos {
+            let files = try RDOSReader.extractAll(from: rawData)
+            let items = files.map { HFSItem(name: $0.name, path: $0.name, isDirectory: false) }
+            return (items, "RDOS")
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat(
                 "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem.")
@@ -177,6 +198,27 @@ public enum HFSExtractor {
             return files.filter { selectedSet.contains($0.name) }
         }
 
+        // Apple Pascal
+        if info.filesystem == .pascal {
+            let (_, files) = try PascalReader.extractAll(from: rawData)
+            let selectedSet = Set(selectedPaths)
+            return files.filter { selectedSet.contains($0.name) }
+        }
+
+        // Gutenberg
+        if info.filesystem == .gutenberg {
+            let files = try GutenbergReader.extractAll(from: rawData)
+            let selectedSet = Set(selectedPaths)
+            return files.filter { selectedSet.contains($0.name) }
+        }
+
+        // RDOS
+        if info.filesystem == .rdos {
+            let files = try RDOSReader.extractAll(from: rawData)
+            let selectedSet = Set(selectedPaths)
+            return files.filter { selectedSet.contains($0.name) }
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat("Not an HFS or MFS volume.")
         }
@@ -222,6 +264,22 @@ public enum HFSExtractor {
         // CP/M volumes: use native CPMReader
         if info.filesystem == .cpm {
             return try CPMReader.extractAll(from: rawData)
+        }
+
+        // Apple Pascal
+        if info.filesystem == .pascal {
+            let (_, files) = try PascalReader.extractAll(from: rawData)
+            return files
+        }
+
+        // Gutenberg
+        if info.filesystem == .gutenberg {
+            return try GutenbergReader.extractAll(from: rawData)
+        }
+
+        // RDOS
+        if info.filesystem == .rdos {
+            return try RDOSReader.extractAll(from: rawData)
         }
 
         guard info.filesystem == .hfs else {

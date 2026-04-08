@@ -31,6 +31,9 @@ public enum DiskImageParser {
         case proDOS = "ProDOS"
         case dos33 = "DOS 3.3"
         case cpm = "CP/M"
+        case pascal = "Apple Pascal"
+        case gutenberg = "Gutenberg"
+        case rdos = "RDOS"
         case unknown = "Unknown"
     }
 
@@ -160,6 +163,12 @@ public enum DiskImageParser {
         if DOSReader.isDOS(rawData, sectorsPerTrack: 13) { return .dos33 }
         // Check for CP/M (Apple II 140K or 800K)
         if CPMReader.isCPM(rawData) { return .cpm }
+        // Check for Apple Pascal (UCSD) — directory at block 2
+        if PascalReader.isPascal(rawData) { return .pascal }
+        // Check for Gutenberg WP — directory at T17/S7
+        if GutenbergReader.isGutenberg(rawData) { return .gutenberg }
+        // Check for RDOS (SSI games) — signature in T1 directory
+        if RDOSReader.isRDOS(rawData) { return .rdos }
         return .unknown
     }
 
