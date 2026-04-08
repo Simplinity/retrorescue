@@ -5,6 +5,11 @@ options:
     macOS: "14.0"
   createIntermediateGroups: true
 
+settings:
+  base:
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_MODULE_VERIFIER: YES
+
 packages:
   swift-log:
     url: https://github.com/apple/swift-log.git
