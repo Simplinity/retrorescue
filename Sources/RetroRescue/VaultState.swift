@@ -639,26 +639,20 @@ final class VaultState: ObservableObject {
     func convertToModernFormat(entry: VaultEntry) {
         guard let vault else { return }
 
-        if FilePreviewHelper.isPICT(entry: entry) {
-            guard let sips = ToolChain.shared.sips,
-                      let pngData = FilePreviewHelper.convertPICTtoPNG(vault: vault, entry: entry, sipsPath: sips) else {
-                self.error = "PICT conversion failed. The file may be damaged or use an unsupported PICT variant."
-                return
-            }
-            let pngName = (entry.name as NSString).deletingPathExtension + ".png"
-            do {
-                try vault.addFile(
-                    name: pngName,
-                    data: pngData,
-                    sourceArchive: entry.name,
-                    parentID: entry.parentID
-                )
-                loadExtractedEntries()
-            } catch {
-                self.error = "Failed to save converted file: \(error.localizedDescription)"
-            }
-        } else {
+        guard let (fileName, convertedData) = ConversionEngine.convert(entry: entry, vault: vault) else {
             self.error = "No converter available for this file type."
+            return
+        }
+        do {
+            try vault.addFile(
+                name: fileName,
+                data: convertedData,
+                sourceArchive: entry.name,
+                parentID: entry.parentID
+            )
+            loadExtractedEntries()
+        } catch {
+            self.error = "Failed to save converted file: \(error.localizedDescription)"
         }
     }
 }
