@@ -23,7 +23,7 @@ struct VaultBrowserView: View {
             }
         }
         .toolbar { toolbarContent }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .onDrop(of: [.fileURL, .url, .text], isTargeted: nil) { providers in
             handleDrop(providers)
             return true
         }
@@ -879,10 +879,28 @@ struct VaultBrowserView: View {
 
     private func handleDrop(_ providers: [NSItemProvider]) {
         for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                DispatchQueue.main.async {
-                    state.addFiles(urls: [url])
+            // File URLs (local files)
+            if provider.canLoadObject(ofClass: URL.self) {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    DispatchQueue.main.async {
+                        if url.isFileURL {
+                            state.addFiles(urls: [url])
+                        } else {
+                            // M1: Web URL dropped — download and import
+                            state.downloadFromURL(url)
+                        }
+                    }
+                }
+            }
+            // Plain text (might be a URL string from browser address bar)
+            if provider.hasItemConformingToTypeIdentifier("public.text") {
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    guard let text, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                          url.scheme == "http" || url.scheme == "https" else { return }
+                    DispatchQueue.main.async {
+                        state.downloadFromURL(url)
+                    }
                 }
             }
         }

@@ -327,6 +327,46 @@ final class VaultState: ObservableObject {
         refreshEntries()
     }
 
+    // MARK: - M1: Download from URL
+
+    func downloadFromURL(_ url: URL) {
+        guard let vault else { return }
+        isProcessing = true
+        progressMessage = "Downloading \(url.lastPathComponent)…"
+        progressFraction = 0.1
+
+        Task {
+            do {
+                let entryID = try await WebDownloader.shared.downloadAndImport(
+                    url: url, vault: vault) { [weak self] msg, fraction in
+                        DispatchQueue.main.async {
+                            self?.progressMessage = msg
+                            self?.progressFraction = fraction
+                        }
+                    }
+                await MainActor.run {
+                    isProcessing = false
+                    progressMessage = nil
+                    refreshEntries()
+                    // Auto-extract if it's an archive
+                    if let entry = try? vault.entry(id: entryID),
+                       Self.isExtractable(entry.name) {
+                        select(entry)
+                        extractEntry(id: entryID)
+                    }
+                    // Re-index for Spotlight
+                    SpotlightIndexer.shared.reindexVault(vault)
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessing = false
+                    progressMessage = nil
+                    self.error = error.localizedDescription
+                }
+            }
+        }
+    }
+
     // MARK: - Delete
 
     func deleteSelected() {
