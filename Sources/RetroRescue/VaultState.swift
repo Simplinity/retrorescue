@@ -131,7 +131,6 @@ final class VaultState: ObservableObject {
         selectedEntry = entry
         cachedDiskImageInfo = nil
         loadExtractedEntries()
-        // Only parse disk image header for actual disk image extensions (not archives!)
         if let e = entry, Self.isDiskImageExtension(e.name) {
             refreshDiskImageInfo()
         }

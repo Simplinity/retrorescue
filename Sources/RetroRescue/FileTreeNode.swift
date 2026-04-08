@@ -21,17 +21,21 @@ class FileTreeNode: Identifiable, ObservableObject {
     init(entry: VaultEntry, vault: Vault?) {
         self.entry = entry
         self.vault = vault
-        // Pre-load children if this entry has any
-        if let vault {
-            let kids = (try? vault.entries(parentID: entry.id)) ?? []
-            if !kids.isEmpty {
-                self.children = kids.map { FileTreeNode(entry: $0, vault: vault) }
-            } else if entry.isDirectory {
-                self.children = []  // empty folder, still shows as expandable
-            } else {
-                self.children = nil  // leaf node
-            }
+        // No DB queries in init! Determine expandability from entry properties only.
+        if entry.isDirectory {
+            self.children = []  // expandable
+        } else {
+            self.children = nil  // leaf — children loaded on demand via reloadChildren()
         }
+    }
+
+    /// Load children on demand (called when user expands a node).
+    func loadChildrenIfNeeded() {
+        guard let vault else { return }
+        // Only load once — if children is empty array (placeholder), fill it
+        guard let existing = children, existing.isEmpty else { return }
+        let kids = (try? vault.entries(parentID: entry.id)) ?? []
+        self.children = kids.isEmpty ? [] : kids.map { FileTreeNode(entry: $0, vault: vault) }
     }
 
     /// Reload children from vault (after extraction).

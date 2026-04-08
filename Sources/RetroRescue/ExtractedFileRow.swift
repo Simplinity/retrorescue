@@ -133,13 +133,6 @@ struct ExtractedFileRow: View {
                 Label("Delete", systemImage: "trash")
             }
         }
-        .onDrag {
-            if !node.entry.isDirectory,
-               let url = onDragFile?(node.entry) {
-                return NSItemProvider(object: url as NSURL)
-            }
-            return NSItemProvider()
-        }
     }
 
     private func showNotImplemented(_ feature: String) {

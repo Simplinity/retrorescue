@@ -52,12 +52,6 @@ struct VaultBrowserView: View {
                 )) { entry in
                     FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
                         .contextMenu { sidebarContextMenu(for: entry) }
-                        .onDrag {
-                            if let url = state.writeTempFileForExport(entry) {
-                                return NSItemProvider(object: url as NSURL)
-                            }
-                            return NSItemProvider()
-                        }
                 }
             }
             statusBar
