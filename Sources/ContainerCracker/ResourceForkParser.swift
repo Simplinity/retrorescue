@@ -239,8 +239,6 @@ public class ResourceForkParser {
         // Version and Info
         "vers": "Version information",
         "SIZE": "Application size/flags",
-        "BNDL": "Application bundle",
-        "FREF": "File type reference",
         "kind": "Finder kind string",
         // System
         "TMPL": "Resource template",
@@ -250,7 +248,6 @@ public class ResourceForkParser {
         "wctb": "Window color table",
         "ictb": "Item color table",
         "mctb": "Menu color table",
-        "STR ": "String resource",
         "PREF": "Preferences",
         "KCHR": "Keyboard mapping",
         "KMAP": "Key mapping",
