@@ -66,6 +66,13 @@ public enum HFSExtractor {
             return (items, "DOS VOL \(volNum)")
         }
 
+        // CP/M volumes: list via native CPMReader
+        if info.filesystem == .cpm {
+            let files = try CPMReader.extractAll(from: rawData)
+            let items = files.map { HFSItem(name: $0.name, path: $0.name, isDirectory: false) }
+            return (items, "CP/M")
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat(
                 "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem.")
@@ -163,6 +170,13 @@ public enum HFSExtractor {
             return files.filter { selectedSet.contains($0.name) }
         }
 
+        // CP/M volumes: extract selected via native CPMReader
+        if info.filesystem == .cpm {
+            let files = try CPMReader.extractAll(from: rawData)
+            let selectedSet = Set(selectedPaths)
+            return files.filter { selectedSet.contains($0.name) }
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat("Not an HFS or MFS volume.")
         }
@@ -203,6 +217,11 @@ public enum HFSExtractor {
             let spt = rawData.count == 116_480 ? 13 : 16
             let (_, files) = try DOSReader.extractAll(from: rawData, sectorsPerTrack: spt)
             return files
+        }
+
+        // CP/M volumes: use native CPMReader
+        if info.filesystem == .cpm {
+            return try CPMReader.extractAll(from: rawData)
         }
 
         guard info.filesystem == .hfs else {

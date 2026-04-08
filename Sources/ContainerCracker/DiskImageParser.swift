@@ -30,6 +30,7 @@ public enum DiskImageParser {
         case hfsPlus = "HFS+"
         case proDOS = "ProDOS"
         case dos33 = "DOS 3.3"
+        case cpm = "CP/M"
         case unknown = "Unknown"
     }
 
@@ -157,6 +158,8 @@ public enum DiskImageParser {
         // Check for DOS 3.3: VTOC at T17/S0 (offset 69632 for 16-sector disks)
         if DOSReader.isDOS(rawData, sectorsPerTrack: 16) { return .dos33 }
         if DOSReader.isDOS(rawData, sectorsPerTrack: 13) { return .dos33 }
+        // Check for CP/M (Apple II 140K or 800K)
+        if CPMReader.isCPM(rawData) { return .cpm }
         return .unknown
     }
 
