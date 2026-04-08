@@ -28,6 +28,7 @@ public enum DiskImageParser {
         case hfs = "HFS"
         case mfs = "MFS"
         case hfsPlus = "HFS+"
+        case proDOS = "ProDOS"
         case unknown = "Unknown"
     }
 
@@ -145,8 +146,14 @@ public enum DiskImageParser {
         case 0x4244: return .hfs     // "BD"
         case 0xD2D7: return .mfs     // Classic MFS
         case 0x482B: return .hfsPlus // "H+"
-        default:     return .unknown
+        default: break
         }
+        // Check for ProDOS: volume dir header at block 2, offset +4
+        if rawData.count >= 6 * 512 {
+            let stByte = rawData[2 * 512 + 4]
+            if (stByte >> 4) == 0x0F { return .proDOS }
+        }
+        return .unknown
     }
 
     // MARK: - DiskCopy 4.2 Parsing

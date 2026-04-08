@@ -51,6 +51,13 @@ public enum HFSExtractor {
             return (items, volName)
         }
 
+        // ProDOS volumes: list via native ProDOSReader
+        if info.filesystem == .proDOS {
+            let (volName, files) = try ProDOSReader.extractAll(from: rawData)
+            let items = files.map { HFSItem(name: $0.name, path: $0.name, isDirectory: false) }
+            return (items, volName)
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat(
                 "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem.")
@@ -133,6 +140,13 @@ public enum HFSExtractor {
             return files.filter { selectedSet.contains($0.name) }
         }
 
+        // ProDOS volumes: extract selected via native ProDOSReader
+        if info.filesystem == .proDOS {
+            let (_, files) = try ProDOSReader.extractAll(from: rawData)
+            let selectedSet = Set(selectedPaths)
+            return files.filter { selectedSet.contains($0.name) }
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat("Not an HFS or MFS volume.")
         }
@@ -162,10 +176,16 @@ public enum HFSExtractor {
             return files
         }
 
+        // ProDOS volumes: use native ProDOSReader
+        if info.filesystem == .proDOS {
+            let (_, files) = try ProDOSReader.extractAll(from: rawData)
+            return files
+        }
+
         guard info.filesystem == .hfs else {
             throw ContainerError.unsupportedFormat(
                 "This \(info.format.rawValue) contains a \(info.filesystem.rawValue) filesystem. "
-                + "Only HFS and MFS volumes are currently supported.")
+                + "Only HFS, MFS, and ProDOS volumes are currently supported.")
         }
 
         // Write raw data to temp file for hfsutils
