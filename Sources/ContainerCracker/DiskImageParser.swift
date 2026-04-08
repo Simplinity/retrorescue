@@ -35,6 +35,7 @@ public enum DiskImageParser {
         public let diskName: String?
         public let dataSize: Int
         public let diskType: String  // "400K GCR", "800K GCR", "1440K MFM", etc.
+        public var checksumValid: Bool = true  // DiskCopy 4.2 checksum result
     }
 
     // MARK: - Format Detection
@@ -257,6 +258,30 @@ public enum DiskImageParser {
         let dataSize = Int(data[64]) << 24 | Int(data[65]) << 16
                       | Int(data[66]) << 8  | Int(data[67])
 
+        // Tag size (big-endian uint32 at offset 68)
+        let tagSize = Int(data[68]) << 24 | Int(data[69]) << 16
+                     | Int(data[70]) << 8  | Int(data[71])
+
+        // Stored checksums (big-endian uint32)
+        let storedDataCksum = readBE32(data, at: 72)
+        let storedTagCksum  = readBE32(data, at: 76)
+
+        // Validate data checksum (rotate-and-add, CP2 algorithm)
+        let dataEnd = min(84 + dataSize, data.count)
+        let computedDataCksum = diskCopyChecksum(data: data, offset: 84, length: dataEnd - 84)
+        let dataChecksumOK = (computedDataCksum == storedDataCksum)
+
+        // Validate tag checksum — first 12 bytes excluded (backward compat)
+        var tagChecksumOK = true
+        if tagSize > 12 {
+            let tagStart = 84 + dataSize
+            let tagEnd = min(tagStart + tagSize, data.count)
+            if tagEnd > tagStart + 12 {
+                let computedTagCksum = diskCopyChecksum(data: data, offset: tagStart + 12, length: tagEnd - tagStart - 12)
+                tagChecksumOK = (computedTagCksum == storedTagCksum)
+            }
+        }
+
         // Disk encoding type (offset 80)
         let encoding = data[80]
         let diskType: String
@@ -269,13 +294,34 @@ public enum DiskImageParser {
         }
 
         // Extract raw data (starts at offset 84)
-        let end = min(84 + dataSize, data.count)
-        let rawData = data[84..<end]
+        let rawData = data[84..<dataEnd]
         let fs = detectFilesystem(rawData: Data(rawData))
 
-        return ImageInfo(format: .diskCopy42, filesystem: fs,
+        var info = ImageInfo(format: .diskCopy42, filesystem: fs,
                         diskName: diskName, dataSize: dataSize,
                         diskType: diskType)
+        info.checksumValid = dataChecksumOK && tagChecksumOK
+        return info
+    }
+
+    /// DiskCopy 4.2 checksum: add big-endian 16-bit values, rotate right after each.
+    /// Identical to CiderPress2 DiskCopy.ComputeChecksum().
+    private static func diskCopyChecksum(data: Data, offset: Int, length: Int) -> UInt32 {
+        var checksum: UInt32 = 0
+        var i = 0
+        while i + 1 < length {
+            let val = UInt32(data[offset + i]) << 8 | UInt32(data[offset + i + 1])
+            checksum = checksum &+ val
+            // Rotate right by 1
+            checksum = (checksum >> 1) | ((checksum & 1) << 31)
+            i += 2
+        }
+        return checksum
+    }
+
+    private static func readBE32(_ data: Data, at offset: Int) -> UInt32 {
+        UInt32(data[offset]) << 24 | UInt32(data[offset+1]) << 16 |
+        UInt32(data[offset+2]) << 8 | UInt32(data[offset+3])
     }
 
     // MARK: - Raw Data Extraction
