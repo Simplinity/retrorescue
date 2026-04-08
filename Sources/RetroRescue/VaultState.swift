@@ -186,6 +186,8 @@ final class VaultState: ObservableObject {
             vault = try Vault.open(at: url)
             VaultLibrary.shared.register(url: url)
             refreshEntries()
+            // L8: Index vault contents for Spotlight search
+            if let vault { SpotlightIndexer.shared.indexVault(vault) }
         } catch {
             self.error = error.localizedDescription
         }
@@ -660,6 +662,8 @@ final class VaultState: ObservableObject {
 
             // L5: Auto-generate thumbnails for newly extracted files
             generateThumbnailsForSelected()
+            // L8: Re-index vault for Spotlight
+            SpotlightIndexer.shared.reindexVault(vault)
         } catch {
             self.error = "Extract failed: \(error.localizedDescription)"
         }
