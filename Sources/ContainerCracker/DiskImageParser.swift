@@ -36,6 +36,7 @@ public enum DiskImageParser {
         public let dataSize: Int
         public let diskType: String  // "400K GCR", "800K GCR", "1440K MFM", etc.
         public var checksumValid: Bool = true  // DiskCopy 4.2 checksum result
+        public var tagData: Data?  // DiskCopy 4.2 tag data (12 bytes/sector, Lisa metadata)
     }
 
     // MARK: - Format Detection
@@ -301,6 +302,16 @@ public enum DiskImageParser {
                         diskName: diskName, dataSize: dataSize,
                         diskType: diskType)
         info.checksumValid = dataChecksumOK && tagChecksumOK
+
+        // Preserve tag data if present (12 bytes per sector — Lisa filesystem metadata)
+        if tagSize > 0 {
+            let tagStart = 84 + dataSize
+            let tagEnd = min(tagStart + tagSize, data.count)
+            if tagEnd > tagStart {
+                info.tagData = Data(data[tagStart..<tagEnd])
+            }
+        }
+
         return info
     }
 

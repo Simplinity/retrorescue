@@ -181,6 +181,28 @@ struct VaultBrowserView: View {
                     .font(.caption)
                     .foregroundStyle(.green)
             }
+
+            // DiskCopy 4.2 disk description + checksum status
+            if let diskInfo = state.selectedDiskImageInfo {
+                Divider()
+                if let name = diskInfo.diskName, !name.isEmpty {
+                    Text("Disk: \"\(name)\" — \(diskInfo.diskType)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 4) {
+                    Image(systemName: diskInfo.checksumValid ? "checkmark.shield.fill" : "xmark.shield.fill")
+                        .foregroundStyle(diskInfo.checksumValid ? .green : .red)
+                    Text(diskInfo.checksumValid ? "Checksum verified" : "Checksum mismatch!")
+                        .font(.caption)
+                        .foregroundStyle(diskInfo.checksumValid ? .green : .red)
+                    if let tag = diskInfo.tagData, !tag.isEmpty {
+                        Text("· \(tag.count) bytes tag data")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
 

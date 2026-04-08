@@ -55,6 +55,17 @@ final class VaultState: ObservableObject {
         !extractedEntries.isEmpty
     }
 
+    /// Get DiskCopy/DART disk image info for the selected entry (lazy, cached per selection).
+    var selectedDiskImageInfo: DiskImageParser.ImageInfo? {
+        guard let vault, let entry = selectedEntry else { return nil }
+        guard let data = try? vault.dataFork(for: entry.id) else { return nil }
+        let format = DiskImageParser.detect(data: data)
+        switch format {
+        case .diskCopy42: return DiskImageParser.parseDiskCopy42(data)
+        default: return nil
+        }
+    }
+
     // MARK: - Vault lifecycle
 
     func createVault(at url: URL) {
