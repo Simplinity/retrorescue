@@ -428,7 +428,7 @@ public enum ResourceRenderers {
     // MARK: - Image Helpers
 
     /// Create NSImage from RGBA pixel array.
-    static func imageFromRGBA(_ pixels: [UInt8], width: Int, height: Int) -> NSImage? {
+    public static func imageFromRGBA(_ pixels: [UInt8], width: Int, height: Int) -> NSImage? {
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
         guard let provider = CGDataProvider(data: Data(pixels) as CFData),
               let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8,

@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import VaultEngine
+import ContainerCracker
 
 /// Comprehensive file type handling for classic Mac and modern files.
 /// Handles preview, Quick Look, and Open for every known file type.
@@ -572,5 +573,223 @@ enum FilePreviewHelper {
     static func conversionTarget(entry: VaultEntry) -> String? {
         if isPICT(entry: entry) { return "PNG image" }
         return nil
+    }
+
+    // MARK: - I6: Hex Dump Fallback
+
+    /// Generate a hex dump string for any binary file.
+    /// Format: "00000000  48 65 6C 6C 6F 20 57 6F  72 6C 64 21 0A 00 00 00  |Hello World!....|"
+    static func hexDump(_ data: Data, maxBytes: Int = 4096) -> String {
+        let limit = min(data.count, maxBytes)
+        var lines: [String] = []
+        for offset in stride(from: 0, to: limit, by: 16) {
+            var hex1 = "", hex2 = "", ascii = ""
+            for i in 0..<16 {
+                if offset + i < limit {
+                    let byte = data[offset + i]
+                    let h = String(format: "%02X ", byte)
+                    if i < 8 { hex1 += h } else { hex2 += h }
+                    ascii.append(byte >= 0x20 && byte < 0x7F ? Character(UnicodeScalar(byte)) : ".")
+                } else {
+                    if i < 8 { hex1 += "   " } else { hex2 += "   " }
+                    ascii.append(" ")
+                }
+            }
+            lines.append(String(format: "%08X  %@ %@ |%@|", offset, hex1, hex2, ascii))
+        }
+        if data.count > maxBytes {
+            lines.append("... (\(data.count) bytes total, showing first \(maxBytes))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Generate hex dump for a vault entry.
+    static func hexDumpPreview(vault: Vault, entry: VaultEntry) -> String? {
+        guard let data = try? vault.dataFork(for: entry.id), !data.isEmpty else { return nil }
+        return hexDump(data)
+    }
+
+    // MARK: - I7: MacPaint Preview
+
+    /// Decode a MacPaint file (.PNTG) to NSImage.
+    /// Format: 512-byte header + PackBits-compressed bitmap (576×720, 1-bit).
+    static func decodeMacPaint(vault: Vault, entry: VaultEntry) -> NSImage? {
+        guard let data = try? vault.dataFork(for: entry.id) else { return nil }
+        return decodeMacPaintData(data)
+    }
+
+    static func decodeMacPaintData(_ data: Data) -> NSImage? {
+        guard data.count > 512 else { return nil }
+        // Skip 512-byte header
+        let compressed = Data(data[512...])
+        // Decompress PackBits — expected output: 576/8 × 720 = 51840 bytes
+        let width = 576, height = 720
+        let expectedBytes = (width / 8) * height
+        let bitmap = PackBitsDecompressor.decompress(compressed, expectedSize: expectedBytes)
+        guard bitmap.count >= expectedBytes else { return nil }
+        // Convert 1-bit bitmap to RGBA
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let byteIdx = y * (width / 8) + x / 8
+                let bitIdx = 7 - (x % 8)
+                let isBlack = (bitmap[byteIdx] >> bitIdx) & 1 == 1
+                let i = (y * width + x) * 4
+                pixels[i] = isBlack ? 0 : 255
+                pixels[i+1] = isBlack ? 0 : 255
+                pixels[i+2] = isBlack ? 0 : 255
+                pixels[i+3] = 255
+            }
+        }
+        return ResourceRenderers.imageFromRGBA(pixels, width: width, height: height)
+    }
+
+    static func isMacPaint(entry: VaultEntry) -> Bool {
+        if entry.typeCode == "PNTG" { return true }
+        let ext = (entry.name as NSString).pathExtension.lowercased()
+        return ext == "pntg" || ext == "mac" || ext == "macp"
+    }
+
+    // MARK: - I8: Icon Preview from Resource Fork
+
+    /// Try to extract the best icon from a file's resource fork.
+    static func iconFromResourceFork(vault: Vault, entry: VaultEntry) -> NSImage? {
+        guard let rsrcData = try? vault.rsrcFork(for: entry.id), !rsrcData.isEmpty else { return nil }
+        let parser = ResourceForkParser(data: rsrcData)
+        guard parser.isValid else { return nil }
+        // Try icon types in quality order: icl8 > icl4 > ICN# > ICON > ics8 > ics4 > ics#
+        let iconTypes = ["icl8", "icl4", "ICN#", "ICON", "cicn", "ics8", "ics4", "ics#"]
+        for type in iconTypes {
+            if let first = parser.findAll(type: type).first,
+               let iconData = parser.readData(for: first),
+               let image = ResourceRenderers.renderIcon(type: type, data: iconData) {
+                return image
+            }
+        }
+        return nil
+    }
+
+    // MARK: - I9: Sound Preview from Resource Fork (snd → WAV)
+
+    /// Extract a WAV file from a snd resource.
+    static func wavFromSnd(vault: Vault, entry: VaultEntry) -> Data? {
+        guard let rsrcData = try? vault.rsrcFork(for: entry.id), !rsrcData.isEmpty else { return nil }
+        let parser = ResourceForkParser(data: rsrcData)
+        guard parser.isValid else { return nil }
+        guard let sndEntry = parser.findAll(type: "snd ").first,
+              let sndData = parser.readData(for: sndEntry) else { return nil }
+        guard let info = ResourceRenderers.parseSnd(sndData) else { return nil }
+        guard info.encoding == 0 else { return nil } // only uncompressed PCM
+        let pcmStart = info.dataOffset
+        let pcmLen = info.numFrames * info.numChannels * (info.sampleSize / 8)
+        guard pcmStart + pcmLen <= sndData.count else { return nil }
+        let pcm = Data(sndData[pcmStart..<(pcmStart + pcmLen)])
+        return buildWAV(pcm: pcm, sampleRate: Int(info.sampleRate),
+                       bitsPerSample: info.sampleSize, channels: info.numChannels)
+    }
+
+    /// Build a WAV file from raw PCM data.
+    private static func buildWAV(pcm: Data, sampleRate: Int, bitsPerSample: Int, channels: Int) -> Data {
+        var wav = Data()
+        let byteRate = sampleRate * channels * bitsPerSample / 8
+        let blockAlign = channels * bitsPerSample / 8
+        let dataSize = UInt32(pcm.count)
+        let fileSize = UInt32(36 + pcm.count)
+        // RIFF header
+        wav.append(contentsOf: [0x52,0x49,0x46,0x46]) // "RIFF"
+        wav.append(contentsOf: withUnsafeBytes(of: fileSize.littleEndian) { Array($0) })
+        wav.append(contentsOf: [0x57,0x41,0x56,0x45]) // "WAVE"
+        // fmt chunk
+        wav.append(contentsOf: [0x66,0x6D,0x74,0x20]) // "fmt "
+        wav.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian) { Array($0) })
+        wav.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) }) // PCM
+        wav.append(contentsOf: withUnsafeBytes(of: UInt16(channels).littleEndian) { Array($0) })
+        wav.append(contentsOf: withUnsafeBytes(of: UInt32(sampleRate).littleEndian) { Array($0) })
+        wav.append(contentsOf: withUnsafeBytes(of: UInt32(byteRate).littleEndian) { Array($0) })
+        wav.append(contentsOf: withUnsafeBytes(of: UInt16(blockAlign).littleEndian) { Array($0) })
+        wav.append(contentsOf: withUnsafeBytes(of: UInt16(bitsPerSample).littleEndian) { Array($0) })
+        // data chunk
+        wav.append(contentsOf: [0x64,0x61,0x74,0x61]) // "data"
+        wav.append(contentsOf: withUnsafeBytes(of: dataSize.littleEndian) { Array($0) })
+        wav.append(pcm)
+        return wav
+    }
+
+    // MARK: - I10: Font Preview from Resource Fork
+
+    /// Generate a text description of bitmap font metrics from resource fork.
+    static func fontPreview(vault: Vault, entry: VaultEntry) -> String? {
+        guard let rsrcData = try? vault.rsrcFork(for: entry.id), !rsrcData.isEmpty else { return nil }
+        let parser = ResourceForkParser(data: rsrcData)
+        guard parser.isValid else { return nil }
+        let fontTypes = ["FONT", "NFNT", "FOND"]
+        var lines: [String] = []
+        for type in fontTypes {
+            for res in parser.findAll(type: type) {
+                guard let data = parser.readData(for: res) else { continue }
+                if type == "FOND" {
+                    lines.append("Font Family (FOND) #\(res.resourceID): '\(res.name)'")
+                } else if let info = ResourceRenderers.parseBitmapFont(data) {
+                    lines.append("\(type) #\(res.resourceID): '\(res.name)'")
+                    lines.append("  Characters: \(info.firstChar)–\(info.lastChar)")
+                    lines.append("  Ascent: \(info.ascent), Descent: \(info.descent), Leading: \(info.leading)")
+                    lines.append("  Max width: \(info.widMax), Height: \(info.fRectHeight)")
+                }
+            }
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    // MARK: - I11: Waveform Visualization
+
+    /// Generate a simple waveform image from audio data.
+    static func waveformImage(pcmData: Data, sampleSize: Int = 8, width: Int = 400, height: Int = 80) -> NSImage? {
+        guard !pcmData.isEmpty else { return nil }
+        let samplesPerPixel = max(1, pcmData.count / width)
+        var pixels = [UInt8](repeating: 255, count: width * height * 4) // white bg
+        // Fill with white
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            pixels[i] = 240; pixels[i+1] = 240; pixels[i+2] = 245; pixels[i+3] = 255
+        }
+        let midY = height / 2
+        for x in 0..<width {
+            let start = x * samplesPerPixel
+            var minVal = 128, maxVal = 128
+            for s in start..<min(start + samplesPerPixel, pcmData.count) {
+                let val = sampleSize == 8 ? Int(pcmData[s]) : Int(Int8(bitPattern: pcmData[s])) + 128
+                minVal = min(minVal, val); maxVal = max(maxVal, val)
+            }
+            let yTop = midY - (maxVal - 128) * midY / 128
+            let yBot = midY - (minVal - 128) * midY / 128
+            for y in max(0,yTop)...min(height-1,yBot) {
+                let i = (y * width + x) * 4
+                pixels[i] = 50; pixels[i+1] = 100; pixels[i+2] = 200; pixels[i+3] = 255
+            }
+        }
+        return ResourceRenderers.imageFromRGBA(pixels, width: width, height: height)
+    }
+
+    // MARK: - I12: Resource Fork Overview
+
+    /// Generate a text summary of resource fork contents.
+    static func resourceForkOverview(vault: Vault, entry: VaultEntry) -> String? {
+        guard let rsrcData = try? vault.rsrcFork(for: entry.id), !rsrcData.isEmpty else { return nil }
+        let parser = ResourceForkParser(data: rsrcData)
+        guard parser.isValid else { return nil }
+        let types = parser.groupedByType()
+        guard !types.isEmpty else { return nil }
+        var lines: [String] = ["Resource Fork: \(parser.entries.count) resources in \(types.count) types", ""]
+        for type in types {
+            let desc = type.description != "Unknown resource type" ? " — \(type.description)" : ""
+            lines.append("  '\(type.typeCode)'\(desc): \(type.resources.count) resource\(type.resources.count == 1 ? "" : "s")")
+            for res in type.resources.prefix(10) {
+                let name = res.name.isEmpty ? "" : " '\(res.name)'"
+                lines.append("    #\(res.resourceID)\(name) (\(res.dataLength) bytes)")
+            }
+            if type.resources.count > 10 {
+                lines.append("    ... and \(type.resources.count - 10) more")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 }

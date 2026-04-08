@@ -199,22 +199,7 @@ final class VaultState: ObservableObject {
 
     /// Select a search result — show its info in the inspector.
     func selectSearchResult(_ entry: VaultEntry) {
-        previewingEntry = entry
-        previewImage = nil
-
-        if let vault {
-            if FilePreviewHelper.isTextPreviewable(entry: entry) {
-                previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
-            } else if FilePreviewHelper.isPICT(entry: entry) {
-                previewText = nil
-                if let sips = ToolChain.shared.sips,
-                   let pngData = FilePreviewHelper.convertPICTtoPNG(vault: vault, entry: entry, sipsPath: sips) {
-                    previewImage = NSImage(data: pngData)
-                }
-            } else {
-                previewText = nil
-            }
-        }
+        previewFile(entry)
     }
 
     // MARK: - Add files
@@ -309,35 +294,61 @@ final class VaultState: ObservableObject {
               !entry.isDirectory else {
             previewingEntry = nil
             previewText = nil
+            previewImage = nil
             return
         }
-
-        // Always set the previewing entry for the info bar
-        previewingEntry = entry
-        previewImage = nil
-
-        // Load text content if previewable
-        if FilePreviewHelper.isTextPreviewable(entry: entry) {
-            previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
-        } else if FilePreviewHelper.isPICT(entry: entry) {
-            previewText = nil
-            if let sips = ToolChain.shared.sips,
-                   let pngData = FilePreviewHelper.convertPICTtoPNG(vault: vault, entry: entry, sipsPath: sips) {
-                previewImage = NSImage(data: pngData)
-            }
-        } else {
-            previewText = nil
-        }
+        // Delegate to unified preview cascade (I6-I12)
+        previewFile(entry)
     }
 
     /// Preview a file from the extracted tree.
     func previewFile(_ entry: VaultEntry) {
         previewingEntry = entry
-        if FilePreviewHelper.isTextPreviewable(entry: entry), let vault {
+        previewText = nil
+        previewImage = nil
+
+        guard let vault else { return }
+
+        // 1. Text preview (highest priority)
+        if FilePreviewHelper.isTextPreviewable(entry: entry) {
             previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
-        } else {
-            previewText = nil
+            return
         }
+
+        // 2. MacPaint (.PNTG) — I7
+        if FilePreviewHelper.isMacPaint(entry: entry) {
+            previewImage = FilePreviewHelper.decodeMacPaint(vault: vault, entry: entry)
+            if previewImage != nil { return }
+        }
+
+        // 3. PICT conversion
+        if FilePreviewHelper.isPICT(entry: entry) {
+            if let pngData = FilePreviewHelper.convertPICTtoPNG(vault: vault, entry: entry) {
+                previewImage = NSImage(data: pngData)
+                if previewImage != nil { return }
+            }
+        }
+
+        // 4. Icon from resource fork — I8
+        if let icon = FilePreviewHelper.iconFromResourceFork(vault: vault, entry: entry) {
+            previewImage = icon
+            return
+        }
+
+        // 5. Resource fork overview — I12
+        if let overview = FilePreviewHelper.resourceForkOverview(vault: vault, entry: entry) {
+            previewText = overview
+            return
+        }
+
+        // 6. Font preview — I10
+        if let fontInfo = FilePreviewHelper.fontPreview(vault: vault, entry: entry) {
+            previewText = fontInfo
+            return
+        }
+
+        // 7. Hex dump fallback — I6 (CRITICAL: every file gets SOMETHING)
+        previewText = FilePreviewHelper.hexDumpPreview(vault: vault, entry: entry)
     }
 
     /// Quick Look a file using macOS Quick Look.
