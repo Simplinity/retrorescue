@@ -220,3 +220,94 @@ public enum APMParser {
         return String(data: data[offset..<(offset + len)], encoding: .macOSRoman) ?? ""
     }
 }
+
+// MARK: - Mac 'TS' Partition Format (pre-APM)
+
+/// Early Macintosh partition format, pre-dating APM.
+/// Block 0: DDR (same as APM, signature 'ER')
+/// Block 1: signature 'TS' (0x5453) + list of 12-byte entries (startBlock, blockCount, fsid)
+///
+/// Used on very early Macintosh hard drives (pre-Mac II, before APM was introduced).
+/// Based on CiderPress2 MacTS.cs (Apache 2.0).
+public enum MacTSParser {
+
+    static let TS_SIGNATURE: UInt16 = 0x5453  // 'TS'
+    static let BLOCK_SIZE = 512
+
+    /// A partition in a TS map.
+    public struct TSPartition {
+        public var startBlock: UInt32 = 0
+        public var blockCount: UInt32 = 0
+        public var fsid: String = ""       // 4-char identifier (e.g. "TFS1" for HFS)
+        public var byteOffset: Int { Int(startBlock) * BLOCK_SIZE }
+        public var byteLength: Int { Int(blockCount) * BLOCK_SIZE }
+    }
+
+    /// Check if raw disk data contains a Mac 'TS' partition map.
+    public static func isMacTS(_ data: Data) -> Bool {
+        guard data.count >= 2 * BLOCK_SIZE else { return false }
+        // Block 0: DDR signature 'ER'
+        let ddrSig = UInt16(data[0]) << 8 | UInt16(data[1])
+        guard ddrSig == APMParser.DDR_SIGNATURE else { return false }
+        // Block 1: 'TS' signature (NOT 'PM' — that would be APM)
+        let tsSig = UInt16(data[BLOCK_SIZE]) << 8 | UInt16(data[BLOCK_SIZE + 1])
+        return tsSig == TS_SIGNATURE
+    }
+
+    /// Parse all partitions from a TS map.
+    public static func parsePartitions(_ data: Data) throws -> [TSPartition] {
+        guard isMacTS(data) else {
+            throw ContainerError.invalidFormat("Not a Mac TS partition map")
+        }
+        let totalBlocks = data.count / BLOCK_SIZE
+        var partitions: [TSPartition] = []
+        var offset = BLOCK_SIZE + 2  // skip 'TS' signature
+
+        while offset + 12 <= BLOCK_SIZE * 2 {  // entries fit in block 1
+            let startBlock = readBE32(data, at: offset)
+            let blockCount = readBE32(data, at: offset + 4)
+            let fsidRaw = readBE32(data, at: offset + 8)
+            offset += 12
+
+            if startBlock == 0 { break }  // end of list
+            guard Int(startBlock) < totalBlocks else { continue }
+
+            var part = TSPartition()
+            part.startBlock = startBlock
+            part.blockCount = min(blockCount, UInt32(totalBlocks) - startBlock)
+            // Convert fsid to 4-char string
+            part.fsid = String(bytes: [
+                UInt8((fsidRaw >> 24) & 0xFF), UInt8((fsidRaw >> 16) & 0xFF),
+                UInt8((fsidRaw >> 8) & 0xFF), UInt8(fsidRaw & 0xFF)
+            ], encoding: .macOSRoman) ?? "????"
+            partitions.append(part)
+        }
+        return partitions
+    }
+
+    /// Find the best data partition and return its raw data.
+    public static func findBestPartition(_ data: Data) -> (Data, DiskImageParser.Filesystem)? {
+        guard let partitions = try? parsePartitions(data) else { return nil }
+        for part in partitions {
+            let start = part.byteOffset
+            let end = min(start + part.byteLength, data.count)
+            guard end > start else { continue }
+            let partData = Data(data[start..<end])
+            let fs = DiskImageParser.detectFilesystem(rawData: partData)
+            if fs == .hfs || fs == .mfs { return (partData, fs) }
+        }
+        // Fall back to first partition
+        if let first = partitions.first {
+            let start = first.byteOffset
+            let end = min(start + first.byteLength, data.count)
+            guard end > start else { return nil }
+            return (Data(data[start..<end]), .unknown)
+        }
+        return nil
+    }
+
+    private static func readBE32(_ data: Data, at offset: Int) -> UInt32 {
+        UInt32(data[offset]) << 24 | UInt32(data[offset+1]) << 16 |
+        UInt32(data[offset+2]) << 8 | UInt32(data[offset+3])
+    }
+}

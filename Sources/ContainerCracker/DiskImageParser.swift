@@ -16,6 +16,7 @@ public enum DiskImageParser {
         case woz = "WOZ (Applesauce)"
         case moof = "MOOF (Macintosh flux image)"
         case apm = "Apple Partition Map"
+        case macTS = "Mac TS (pre-APM)"
         case ndif = "NDIF (DiskCopy 6.x)"
         case udif = "UDIF (.dmg)"
         case iso9660 = "ISO 9660"
@@ -90,6 +91,11 @@ public enum DiskImageParser {
         // APM: DDR signature 'ER' (0x4552) at block 0 + 'PM' (0x504D) at block 1
         if data.count >= 1024 && APMParser.isAPM(data) {
             return .apm
+        }
+
+        // Mac TS: DDR 'ER' at block 0 + 'TS' at block 1 (pre-APM)
+        if data.count >= 1024 && MacTSParser.isMacTS(data) {
+            return .macTS
         }
 
         // DiskCopy 4.2: magic 0x0100 at offset 82-83
@@ -534,6 +540,18 @@ public enum DiskImageParser {
                                 diskName: partNames.first,
                                 dataSize: partData.count,
                                 diskType: "APM — \(partitions.count) partitions")
+            return (partData, info)
+
+        case .macTS:
+            // Mac 'TS' pre-APM partition format
+            guard let (partData, partFS) = MacTSParser.findBestPartition(data) else {
+                throw ContainerError.unsupportedFormat(
+                    "Mac TS partition map found but no usable partition detected.")
+            }
+            let tsPartitions = (try? MacTSParser.parsePartitions(data)) ?? []
+            let info = ImageInfo(format: .macTS, filesystem: partFS,
+                                diskName: nil, dataSize: partData.count,
+                                diskType: "Mac TS — \(tsPartitions.count) partitions")
             return (partData, info)
 
         case .twoIMG:
