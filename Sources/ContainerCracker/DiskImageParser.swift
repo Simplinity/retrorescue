@@ -12,6 +12,9 @@ public enum DiskImageParser {
     public enum Format: String {
         case diskCopy42 = "DiskCopy 4.2"
         case dart = "DART (Disk Archive/Retrieval Tool)"
+        case twoIMG = "2IMG (Universal Disk Image)"
+        case woz = "WOZ (Applesauce)"
+        case moof = "MOOF (Macintosh flux image)"
         case ndif = "NDIF (DiskCopy 6.x)"
         case udif = "UDIF (.dmg)"
         case iso9660 = "ISO 9660"
@@ -57,6 +60,24 @@ public enum DiskImageParser {
             if srcCmp <= 2 && isDARTDiskType(srcType, srcSize) {
                 return .dart
             }
+        }
+
+        // 2IMG: magic "2IMG" at offset 0 (little-endian: 0x32 0x49 0x4D 0x47)
+        if data.count >= 64 && data[0] == 0x32 && data[1] == 0x49
+           && data[2] == 0x4D && data[3] == 0x47 {
+            return .twoIMG
+        }
+
+        // WOZ: magic "WOZ1" or "WOZ2" at offset 0
+        if data.count >= 12 && data[0] == 0x57 && data[1] == 0x4F && data[2] == 0x5A
+           && (data[3] == 0x31 || data[3] == 0x32) {
+            return .woz
+        }
+
+        // MOOF: magic "MOOF" at offset 0 (0x4D 0x4F 0x4F 0x46)
+        if data.count >= 12 && data[0] == 0x4D && data[1] == 0x4F
+           && data[2] == 0x4F && data[3] == 0x46 {
+            return .moof
         }
 
         // DiskCopy 4.2: magic 0x0100 at offset 82-83
@@ -338,6 +359,91 @@ public enum DiskImageParser {
         UInt32(data[offset+2]) << 8 | UInt32(data[offset+3])
     }
 
+    private static func readLE32(_ data: Data, at offset: Int) -> UInt32 {
+        UInt32(data[offset]) | UInt32(data[offset+1]) << 8 |
+        UInt32(data[offset+2]) << 16 | UInt32(data[offset+3]) << 24
+    }
+
+    // MARK: - 2IMG Parsing (D13)
+
+    /// Parse a 2IMG (Apple II Universal Disk Image) header.
+    /// Magic: "2IMG" (0x32 0x49 0x4D 0x47), 64-byte header, all little-endian.
+    public static func parse2IMG(_ data: Data) -> ImageInfo? {
+        guard data.count >= 64,
+              data[0] == 0x32, data[1] == 0x49, data[2] == 0x4D, data[3] == 0x47
+        else { return nil }
+
+        let creator = String(data: data[4..<8], encoding: .ascii) ?? "????"
+        let headerLen = Int(readLE32(data, at: 8) & 0xFFFF) // lower 16 bits
+        let imageFormat = readLE32(data, at: 12)  // 0=DOS, 1=ProDOS, 2=nibble
+        let numBlocks = Int(readLE32(data, at: 20))
+        let dataOffset = Int(readLE32(data, at: 24))
+        let dataLen = Int(readLE32(data, at: 28))
+
+        let formatStr: String
+        switch imageFormat {
+        case 0: formatStr = "DOS 3.3 sector order"
+        case 1: formatStr = "ProDOS block order"
+        case 2: formatStr = "Nibble data"
+        default: formatStr = "Unknown (\(imageFormat))"
+        }
+
+        // Determine actual data length
+        let actualDataLen = dataLen > 0 ? dataLen : numBlocks * 512
+        let end = min(dataOffset + actualDataLen, data.count)
+        guard end > dataOffset else { return nil }
+
+        let rawData = Data(data[dataOffset..<end])
+        let fs = detectFilesystem(rawData: rawData)
+
+        return ImageInfo(format: .twoIMG, filesystem: fs,
+                        diskName: "2IMG (\(creator))",
+                        dataSize: actualDataLen,
+                        diskType: formatStr)
+    }
+
+    // MARK: - WOZ/MOOF Info (D14/D15)
+
+    /// Parse basic info from a WOZ or MOOF disk image header.
+    /// These are nibble-level formats — we detect and show info but don't extract sectors.
+    public static func parseWozMoofInfo(_ data: Data) -> ImageInfo? {
+        guard data.count >= 12 else { return nil }
+        let magic = String(data: data[0..<4], encoding: .ascii) ?? "????"
+        let isWoz = magic.hasPrefix("WOZ")
+        let isMoof = magic.hasPrefix("MOOF")
+        guard isWoz || isMoof else { return nil }
+
+        let version = isWoz ? String(magic.last ?? "?") : "1"
+        let format: Format = isWoz ? .woz : .moof
+        let diskType = isWoz ? "WOZ v\(version) (nibble-level)" : "MOOF (Mac flux image)"
+
+        return ImageInfo(format: format, filesystem: .unknown,
+                        diskName: nil, dataSize: data.count,
+                        diskType: diskType)
+    }
+
+    // MARK: - Sector Order Detection (D16)
+
+    /// Detect sector order for unadorned block images (.do, .po, .dsk).
+    /// Returns "dos" if DOS 3.3 order, "prodos" if ProDOS/block order, nil if unknown.
+    public static func detectSectorOrder(data: Data, filename: String) -> String? {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        // Extension is the primary indicator
+        if ext == "po" { return "prodos" }
+        if ext == "do" { return "dos" }
+        // For .dsk, try to detect from content
+        if data.count == 143_360 {
+            // 140K = 5.25" floppy (35 tracks × 16 sectors × 256 bytes)
+            // Check for DOS 3.3 VTOC at T17/S0 (ProDOS order) or filesystem signatures
+            let fs = detectFilesystem(rawData: data)
+            if fs == .hfs || fs == .hfsPlus { return "prodos" }
+            // Default for 140K .dsk: DOS order (historical convention)
+            return "dos"
+        }
+        // Larger volumes: always block/ProDOS order
+        return "prodos"
+    }
+
     // MARK: - Raw Data Extraction
 
     /// Convert any disk image format to raw sector data.
@@ -394,6 +500,24 @@ public enum DiskImageParser {
                                 diskName: nil, dataSize: data.count,
                                 diskType: "Hybrid ISO 9660/HFS disc")
             return (data, info)
+
+        case .twoIMG:
+            guard let info = parse2IMG(data) else {
+                throw ContainerError.invalidFormat("Invalid 2IMG image")
+            }
+            let dataOffset = Int(readLE32(data, at: 24))
+            let dataLen = Int(readLE32(data, at: 28))
+            let actualLen = dataLen > 0 ? dataLen : Int(readLE32(data, at: 20)) * 512
+            let end2 = min(dataOffset + actualLen, data.count)
+            return (Data(data[dataOffset..<end2]), info)
+
+        case .woz, .moof:
+            let info = parseWozMoofInfo(data) ?? ImageInfo(
+                format: format, filesystem: .unknown,
+                diskName: nil, dataSize: data.count,
+                diskType: "Nibble-level image")
+            throw ContainerError.unsupportedFormat(
+                "This is a \(info.diskType) file. Nibble-level images require sector-by-sector decoding which is not yet supported.")
 
         case .raw:
             let fs = detectFilesystem(rawData: data)

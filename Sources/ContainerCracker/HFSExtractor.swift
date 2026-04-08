@@ -11,6 +11,9 @@ public enum HFSExtractor {
         "img", "image", "dsk", "disk",
         "hfs", "hfv",
         "dart",         // DART alternate extension
+        "2mg", "2img",  // 2IMG (Apple II Universal Disk Image)
+        "po",           // ProDOS-order block image
+        "do",           // DOS-order block image
     ]
 
     public static func canHandle(filename: String) -> Bool {
