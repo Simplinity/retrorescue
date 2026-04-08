@@ -72,6 +72,9 @@ targets:
     dependencies:
       - target: VaultEngine
       - target: ContainerCracker
+      - target: RetroRescueQuickLook
+        embed: true
+        codeSign: true
       - package: swift-log
         product: Logging
 
@@ -92,3 +95,21 @@ targets:
     dependencies:
       - target: VaultEngine
       - target: ContainerCracker
+
+  RetroRescueQuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/QuickLookExtension
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.simplinity.retrorescue.quicklook
+        INFOPLIST_FILE: Sources/QuickLookExtension/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+    dependencies:
+      - sdk: libsqlite3.tbd
+      - sdk: WebKit.framework
+      - sdk: Quartz.framework
