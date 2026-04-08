@@ -26,6 +26,22 @@ final class VaultState: ObservableObject {
     @Published var selectiveImportTitle: String?
     @Published var selectiveImportEntryID: String?
 
+    // K12: Filters
+    @Published var filterTypeCode: String = ""
+    @Published var filterCreatorCode: String = ""
+    @Published var filterHasRsrc: Bool? = nil          // nil = any, true = has rsrc, false = no rsrc
+    @Published var filterMinSize: Int? = nil
+    @Published var filterMaxSize: Int? = nil
+
+    // K13/K14: View mode
+    enum ViewMode: String, CaseIterable { case list, grid, columns }
+    @Published var viewMode: ViewMode = .list
+
+    // K19: Progress
+    @Published var progressMessage: String?
+    @Published var progressFraction: Double = 0
+    @Published var isProcessing = false
+
     /// Generic item for selective import (works for both unar and HFS).
     struct SelectiveImportItem: Identifiable, Hashable {
         let id: String
@@ -41,8 +57,45 @@ final class VaultState: ObservableObject {
         !searchText.isEmpty
     }
 
+    // K17: Window title with vault name + count
     var vaultName: String {
         vault?.url.deletingPathExtension().lastPathComponent ?? "RetroRescue"
+    }
+
+    var windowTitle: String {
+        let name = vaultName
+        let count = entries.count
+        return count > 0 ? "\(name) — \(count) items" : name
+    }
+
+    // K12: Filtered extracted entries
+    var filteredExtractedEntries: [VaultEntry] {
+        var result = extractedEntries
+        if !filterTypeCode.isEmpty {
+            result = result.filter { ($0.typeCode ?? "").localizedCaseInsensitiveContains(filterTypeCode) }
+        }
+        if !filterCreatorCode.isEmpty {
+            result = result.filter { ($0.creatorCode ?? "").localizedCaseInsensitiveContains(filterCreatorCode) }
+        }
+        if let hasRsrc = filterHasRsrc {
+            result = result.filter { hasRsrc ? ($0.rsrcForkSize ?? 0) > 0 : ($0.rsrcForkSize ?? 0) == 0 }
+        }
+        if let min = filterMinSize { result = result.filter { $0.dataForkSize >= Int64(min) } }
+        if let max = filterMaxSize { result = result.filter { $0.dataForkSize <= Int64(max) } }
+        return result
+    }
+
+    var isFiltering: Bool {
+        !filterTypeCode.isEmpty || !filterCreatorCode.isEmpty || filterHasRsrc != nil
+            || filterMinSize != nil || filterMaxSize != nil
+    }
+
+    func clearFilters() {
+        filterTypeCode = ""
+        filterCreatorCode = ""
+        filterHasRsrc = nil
+        filterMinSize = nil
+        filterMaxSize = nil
     }
 
     /// Is the selected entry an archive we can extract?

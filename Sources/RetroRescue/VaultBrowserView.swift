@@ -12,7 +12,7 @@ struct VaultBrowserView: View {
         } detail: {
             detailPanel
         }
-        .navigationTitle(state.vaultName)
+        .navigationTitle(state.windowTitle)
         .searchable(text: $state.searchText, prompt: "Search files…")
         .onSubmit(of: .search) { state.performSearch() }
         .onChange(of: state.searchText) { _, newValue in
@@ -34,6 +34,24 @@ struct VaultBrowserView: View {
         .sheet(item: $state.getInfoEntry) { entry in
             GetInfoView(entry: entry)
         }
+        // K18: Preferences sheet
+        .sheet(isPresented: $showPreferences) {
+            PreferencesView()
+        }
+        // K19: Progress overlay
+        .overlay { progressOverlay }
+        // K15: Keyboard shortcuts
+        .onKeyPress(.space) {
+            if let entry = state.previewingEntry { state.quickLook(entry); return .handled }
+            return .ignored
+        }
+        .onKeyPress(.return) {
+            if let entry = state.selectedEntry { state.select(entry); return .handled }
+            return .ignored
+        }
+        .onKeyPress(.deleteForward) {
+            state.deleteSelected(); return .handled
+        }
     }
 
     // MARK: - Left panel: archive list
@@ -52,6 +70,19 @@ struct VaultBrowserView: View {
                 )) { entry in
                     FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
                         .contextMenu { sidebarContextMenu(for: entry) }
+                        // K16: Lazy drag — only writes temp file when drag actually starts
+                        .onDrag {
+                            let provider = NSItemProvider()
+                            provider.registerFileRepresentation(forTypeIdentifier: "public.data", visibility: .all) { completion in
+                                if let url = self.state.writeTempFileForExport(entry) {
+                                    completion(url, true, nil)
+                                } else {
+                                    completion(nil, false, nil)
+                                }
+                                return nil
+                            }
+                            return provider
+                        }
                 }
             }
             statusBar
@@ -98,17 +129,15 @@ struct VaultBrowserView: View {
                         Divider()
 
                         if state.previewingEntry != nil {
-                            // File browser + preview: resizable divider between them
                             VSplitView {
-                                extractedFilesSection
+                                extractedFilesForViewMode
                                     .frame(maxWidth: .infinity, minHeight: 100, idealHeight: 300, maxHeight: .infinity)
 
                                 filePreviewSection(state.previewingEntry!)
                                     .frame(maxWidth: .infinity, minHeight: 80, idealHeight: 200, maxHeight: .infinity)
                             }
                         } else {
-                            // File browser only: takes all remaining space
-                            extractedFilesSection
+                            extractedFilesForViewMode
                         }
                     }
 
@@ -276,6 +305,16 @@ struct VaultBrowserView: View {
         }
     }
 
+    // K13/K14: Switch view based on viewMode
+    @ViewBuilder
+    private var extractedFilesForViewMode: some View {
+        switch state.viewMode {
+        case .list: extractedFilesSection
+        case .grid: extractedFilesGrid
+        case .columns: extractedFilesColumns
+        }
+    }
+
     private var extractedFilesSection: some View {
         List(state.extractedTree, children: \.children, selection: Binding(
             get: { state.selectedExtractedID },
@@ -401,6 +440,20 @@ struct VaultBrowserView: View {
                 Label("Add Files", systemImage: "plus")
             }
         }
+        // K13/K14: View mode picker
+        ToolbarItem(placement: .automatic) {
+            Picker("View", selection: $state.viewMode) {
+                Label("List", systemImage: "list.bullet").tag(VaultState.ViewMode.list)
+                Label("Grid", systemImage: "square.grid.2x2").tag(VaultState.ViewMode.grid)
+                Label("Columns", systemImage: "rectangle.split.3x1").tag(VaultState.ViewMode.columns)
+            }
+            .pickerStyle(.segmented)
+            .help("Switch view mode")
+        }
+        // K12: Filter popover
+        ToolbarItem(placement: .automatic) {
+            filterButton
+        }
         ToolbarItem(placement: .destructiveAction) {
             Button { state.deleteSelected() } label: {
                 Label("Delete", systemImage: "trash")
@@ -425,6 +478,159 @@ struct VaultBrowserView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background(.bar)
+    }
+
+    // MARK: - K12: Filter Popover
+
+    @State private var showFilterPopover = false
+
+    private var filterButton: some View {
+        Button {
+            showFilterPopover.toggle()
+        } label: {
+            Label("Filter", systemImage: state.isFiltering ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+        }
+        .help("Filter extracted files")
+        .popover(isPresented: $showFilterPopover, arrowEdge: .bottom) {
+            filterPopoverContent
+        }
+    }
+
+    private var filterPopoverContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Filter Files").font(.headline)
+            HStack {
+                Text("Type:").frame(width: 60, alignment: .trailing)
+                TextField("e.g. TEXT", text: $state.filterTypeCode).textFieldStyle(.roundedBorder).frame(width: 120)
+            }
+            HStack {
+                Text("Creator:").frame(width: 60, alignment: .trailing)
+                TextField("e.g. MSWD", text: $state.filterCreatorCode).textFieldStyle(.roundedBorder).frame(width: 120)
+            }
+            HStack {
+                Text("Rsrc fork:").frame(width: 60, alignment: .trailing)
+                Picker("", selection: Binding(
+                    get: { state.filterHasRsrc.map { $0 ? 1 : 0 } ?? -1 },
+                    set: { state.filterHasRsrc = $0 == -1 ? nil : $0 == 1 }
+                )) {
+                    Text("Any").tag(-1)
+                    Text("Has rsrc").tag(1)
+                    Text("No rsrc").tag(0)
+                }
+                .pickerStyle(.segmented).frame(width: 180)
+            }
+            if state.isFiltering {
+                Button("Clear Filters") { state.clearFilters() }
+                    .buttonStyle(.borderless).foregroundStyle(.red)
+            }
+        }
+        .padding()
+        .frame(width: 280)
+    }
+
+    // MARK: - K13: Grid View
+
+    private var extractedFilesGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80, maximum: 100))], spacing: 12) {
+                ForEach(state.filteredExtractedEntries) { entry in
+                    VStack(spacing: 4) {
+                        Image(systemName: entry.isDirectory ? "folder.fill" : fileIcon(for: entry))
+                            .font(.system(size: 32))
+                            .foregroundStyle(entry.isDirectory ? .blue : .secondary)
+                            .frame(height: 40)
+                        Text(entry.name)
+                            .font(.caption2)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(width: 80, height: 80)
+                    .padding(4)
+                    .background(state.selectedExtractedID == entry.id ? Color.accentColor.opacity(0.2) : Color.clear)
+                    .cornerRadius(8)
+                    .onTapGesture { state.selectExtractedFile(id: entry.id) }
+                    .onTapGesture(count: 2) { state.quickLook(entry) }
+                }
+            }
+            .padding()
+        }
+    }
+
+    private func fileIcon(for entry: VaultEntry) -> String {
+        let ext = (entry.name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "txt", "text", "md": return "doc.text"
+        case "png", "jpg", "gif", "tiff", "pict": return "photo"
+        case "mp3", "aiff", "wav": return "music.note"
+        case "mov", "mp4": return "film"
+        case "sit", "zip", "cpt": return "archivebox"
+        case "img", "dsk", "dmg": return "opticaldiscsymbol"
+        default: return entry.rsrcForkSize > 0 ? "doc.richtext" : "doc"
+        }
+    }
+
+    // MARK: - K14: Column View (breadcrumb-style)
+
+    private var extractedFilesColumns: some View {
+        VStack(spacing: 0) {
+            // Breadcrumb path bar
+            HStack(spacing: 4) {
+                Image(systemName: "folder").foregroundStyle(.secondary)
+                Text(state.selectedEntry?.name ?? "").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(state.filteredExtractedEntries.count) items").font(.caption2).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(.bar)
+
+            Divider()
+
+            // Two-column: folders left, files right
+            HStack(spacing: 0) {
+                let dirs = state.filteredExtractedEntries.filter { $0.isDirectory }
+                let files = state.filteredExtractedEntries.filter { !$0.isDirectory }
+                if !dirs.isEmpty {
+                    List(dirs, selection: Binding(
+                        get: { state.selectedExtractedID },
+                        set: { state.selectExtractedFile(id: $0) }
+                    )) { entry in
+                        Label(entry.name, systemImage: "folder")
+                    }
+                    .frame(minWidth: 150, maxWidth: 200)
+                    Divider()
+                }
+                List(files, selection: Binding(
+                    get: { state.selectedExtractedID },
+                    set: { state.selectExtractedFile(id: $0) }
+                )) { entry in
+                    Label(entry.name, systemImage: fileIcon(for: entry))
+                }
+            }
+        }
+    }
+
+    // MARK: - K18: Preferences
+
+    @State private var showPreferences = false
+
+    // MARK: - K19: Progress Overlay
+
+    private var progressOverlay: some View {
+        Group {
+            if state.isProcessing {
+                VStack(spacing: 12) {
+                    ProgressView(value: state.progressFraction)
+                        .progressViewStyle(.linear)
+                        .frame(width: 250)
+                    Text(state.progressMessage ?? "Processing…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .shadow(radius: 8)
+            }
+        }
     }
 
     // MARK: - Context Menus
