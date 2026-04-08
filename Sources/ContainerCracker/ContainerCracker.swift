@@ -11,6 +11,7 @@ public enum ContainerCracker {
         case appleSingle = "AppleSingle"
         case appleDouble = "AppleDouble"
         case binaryII = "Binary II"
+        case appleLinkPE = "AppleLink PE"
         case unknown = "Unknown"
     }
 
@@ -24,6 +25,7 @@ public enum ContainerCracker {
         }
         if BinHexParser.canParse(data) { return .binHex }
         if BinaryIIParser.canParse(data) { return .binaryII }
+        if AppleLinkParser.canParse(data) { return .appleLinkPE }
 
         // Fall back to extension
         let ext = (filename as NSString).pathExtension.lowercased()
@@ -31,6 +33,7 @@ public enum ContainerCracker {
         case "bin": return .macBinary
         case "hqx": return .binHex
         case "bny", "bqy": return .binaryII
+        case "acu": return .appleLinkPE
         default: return .unknown
         }
     }
@@ -83,8 +86,11 @@ public enum ContainerCracker {
             )
 
         case .binaryII:
-            // Binary II may contain multiple files; return the first one
             let files = try BinaryIIParser.parseAll(data)
+            return files.first
+
+        case .appleLinkPE:
+            let files = try AppleLinkParser.parseAll(data)
             return files.first
 
         case .unknown:
