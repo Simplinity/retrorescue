@@ -18,6 +18,7 @@ final class VaultState: ObservableObject {
     @Published var searchText: String = ""
     @Published var searchResults: [VaultEntry]?      // nil = not searching
     @Published var getInfoEntry: VaultEntry?          // entry for Get Info sheet
+    @Published var cachedDiskImageInfo: DiskImageParser.ImageInfo?  // cached, not computed
 
     // Selective import state
     @Published var showSelectiveImport = false
@@ -55,14 +56,23 @@ final class VaultState: ObservableObject {
         !extractedEntries.isEmpty
     }
 
-    /// Get DiskCopy/DART disk image info for the selected entry (lazy, cached per selection).
-    var selectedDiskImageInfo: DiskImageParser.ImageInfo? {
-        guard let vault, let entry = selectedEntry else { return nil }
-        guard let data = try? vault.dataFork(for: entry.id) else { return nil }
-        let format = DiskImageParser.detect(data: data)
+    /// Refresh cached disk image info for the selected entry.
+    /// Called once on selection change — NOT a computed property (avoids re-reading on every SwiftUI body eval).
+    func refreshDiskImageInfo() {
+        guard let vault, let entry = selectedEntry else {
+            cachedDiskImageInfo = nil
+            return
+        }
+        // Only read first 128 bytes for header detection (avoid reading multi-MB data forks)
+        guard let fullData = try? vault.dataFork(for: entry.id) else {
+            cachedDiskImageInfo = nil
+            return
+        }
+        let headerData = fullData.prefix(max(1024, min(fullData.count, 65536)))
+        let format = DiskImageParser.detect(data: Data(headerData))
         switch format {
-        case .diskCopy42: return DiskImageParser.parseDiskCopy42(data)
-        default: return nil
+        case .diskCopy42: cachedDiskImageInfo = DiskImageParser.parseDiskCopy42(fullData)
+        default: cachedDiskImageInfo = nil
         }
     }
 
@@ -110,7 +120,12 @@ final class VaultState: ObservableObject {
 
     func select(_ entry: VaultEntry?) {
         selectedEntry = entry
+        cachedDiskImageInfo = nil
         loadExtractedEntries()
+        // Only parse disk image header for extractable entries (not for every file)
+        if let e = entry, Self.isExtractable(e.name) {
+            refreshDiskImageInfo()
+        }
     }
 
     private func loadExtractedEntries() {

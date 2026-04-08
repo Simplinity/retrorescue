@@ -183,7 +183,7 @@ struct VaultBrowserView: View {
             }
 
             // DiskCopy 4.2 disk description + checksum status
-            if let diskInfo = state.selectedDiskImageInfo {
+            if let diskInfo = state.cachedDiskImageInfo {
                 Divider()
                 if let name = diskInfo.diskName, !name.isEmpty {
                     Text("Disk: \"\(name)\" — \(diskInfo.diskType)")
