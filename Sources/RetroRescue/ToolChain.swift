@@ -45,6 +45,7 @@ final class ToolChain: ObservableObject {
     var hcopy: String?     { tools["hcopy"]?.path }
     var hls: String?       { tools["hls"]?.path }
     var humount: String?   { tools["humount"]?.path }
+    var hformat: String?   { tools["hformat"]?.path }
 
     // MARK: - Feature flags
 
@@ -100,6 +101,9 @@ final class ToolChain: ObservableObject {
         register("humount", purpose: "Unmount HFS volumes",
                  bundled: "\(toolsDir)/humount",
                  homebrew: "/opt/homebrew/bin/humount")
+        register("hformat", purpose: "Create HFS disk images",
+                 bundled: "\(toolsDir)/hformat",
+                 homebrew: "/opt/homebrew/bin/hformat")
 
         // Media — use AVFoundation natively, ffmpeg only as optional bonus
         register("ffmpeg", purpose: "Audio/video transcoding (optional)",
