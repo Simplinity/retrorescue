@@ -10,6 +10,7 @@ public enum ContainerCracker {
         case binHex = "BinHex 4.0"
         case appleSingle = "AppleSingle"
         case appleDouble = "AppleDouble"
+        case binaryII = "Binary II"
         case unknown = "Unknown"
     }
 
@@ -22,12 +23,14 @@ public enum ContainerCracker {
             return .appleDouble
         }
         if BinHexParser.canParse(data) { return .binHex }
+        if BinaryIIParser.canParse(data) { return .binaryII }
 
         // Fall back to extension
         let ext = (filename as NSString).pathExtension.lowercased()
         switch ext {
         case "bin": return .macBinary
         case "hqx": return .binHex
+        case "bny", "bqy": return .binaryII
         default: return .unknown
         }
     }
@@ -79,9 +82,19 @@ public enum ContainerCracker {
                 finderFlags: flags
             )
 
+        case .binaryII:
+            // Binary II may contain multiple files; return the first one
+            let files = try BinaryIIParser.parseAll(data)
+            return files.first
+
         case .unknown:
             return nil
         }
+    }
+
+    /// Extract all files from a Binary II archive.
+    public static func extractBinaryII(data: Data) throws -> [ExtractedFile] {
+        return try BinaryIIParser.parseAll(data)
     }
 
     /// Extract an archive (StuffIt, Compact Pro, etc.) into multiple files.

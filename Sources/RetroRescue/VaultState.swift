@@ -244,7 +244,9 @@ final class VaultState: ObservableObject {
 
     /// Check if a file is extractable (archive, disk image, etc.)
     static func isExtractable(_ name: String) -> Bool {
-        UnarExtractor.canHandle(filename: name)
+        let ext = (name as NSString).pathExtension.lowercased()
+        if ext == "bny" || ext == "bqy" { return true } // Binary II — native parser
+        return UnarExtractor.canHandle(filename: name)
             || (HFSExtractor.canHandle(filename: name) && ToolChain.shared.canExtractHFS)
     }
 
@@ -357,8 +359,15 @@ final class VaultState: ObservableObject {
 
             var items: [SelectiveImportItem] = []
             var title = entry.name
+            let ext1 = (entry.name as NSString).pathExtension.lowercased()
 
-            if UnarExtractor.canHandle(filename: entry.name) {
+            if ext1 == "bny" || ext1 == "bqy" {
+                let allFiles = try BinaryIIParser.parseAll(archiveData)
+                items = allFiles.enumerated().map { (i, f) in
+                    SelectiveImportItem(id: String(i), name: f.name, path: f.name,
+                                       size: Int64(f.dataFork.count), isDirectory: false)
+                }
+            } else if UnarExtractor.canHandle(filename: entry.name) {
                 let archiveItems = try UnarExtractor.listContents(archiveURL: tempFile)
                 items = archiveItems.map { item in
                     SelectiveImportItem(id: item.id, name: item.name, path: item.name,
@@ -403,8 +412,12 @@ final class VaultState: ObservableObject {
             defer { try? FileManager.default.removeItem(at: tempFile) }
 
             let extracted: [ExtractedFile]
+            let ext2 = (entry.name as NSString).pathExtension.lowercased()
 
-            if UnarExtractor.canHandle(filename: entry.name) {
+            if ext2 == "bny" || ext2 == "bqy" {
+                let allFiles = try BinaryIIParser.parseAll(archiveData)
+                extracted = allFiles.filter { selectedPaths.contains($0.name) }
+            } else if UnarExtractor.canHandle(filename: entry.name) {
                 extracted = try UnarExtractor.extract(archiveURL: tempFile, onlyFiles: selectedPaths)
             } else if HFSExtractor.canHandle(filename: entry.name),
                       let hm = ToolChain.shared.hmount,
@@ -457,8 +470,12 @@ final class VaultState: ObservableObject {
             defer { try? FileManager.default.removeItem(at: tempFile) }
 
             let extracted: [ExtractedFile]
+            let ext = (entry.name as NSString).pathExtension.lowercased()
 
-            if UnarExtractor.canHandle(filename: entry.name) {
+            if ext == "bny" || ext == "bqy" {
+                // Binary II — native parser (unar doesn't support this format)
+                extracted = try BinaryIIParser.parseAll(archiveData)
+            } else if UnarExtractor.canHandle(filename: entry.name) {
                 extracted = try UnarExtractor.extract(archiveURL: tempFile)
             } else if HFSExtractor.canHandle(filename: entry.name),
                       let hm = ToolChain.shared.hmount,
