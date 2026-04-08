@@ -250,6 +250,49 @@ public final class Vault {
         return try Data(contentsOf: path)
     }
 
+    // MARK: - Thumbnails (L5)
+
+    /// Path for a thumbnail PNG for the given entry ID.
+    public func thumbnailPath(for id: String) -> URL {
+        thumbnailsDir.appendingPathComponent("\(id).png")
+    }
+
+    /// Check if a thumbnail exists for the given entry.
+    public func hasThumbnail(for id: String) -> Bool {
+        fm.fileExists(atPath: thumbnailPath(for: id).path)
+    }
+
+    /// Read thumbnail PNG data for the given entry. Returns nil if no thumbnail.
+    public func thumbnail(for id: String) -> Data? {
+        let path = thumbnailPath(for: id)
+        guard fm.fileExists(atPath: path.path) else { return nil }
+        return try? Data(contentsOf: path)
+    }
+
+    /// Store a thumbnail PNG for the given entry.
+    public func setThumbnail(for id: String, pngData: Data) throws {
+        try pngData.write(to: thumbnailPath(for: id))
+    }
+
+    /// Delete a thumbnail for the given entry.
+    public func deleteThumbnail(for id: String) {
+        let path = thumbnailPath(for: id)
+        try? fm.removeItem(at: path)
+    }
+
+    /// Delete all thumbnails and return the count removed.
+    @discardableResult
+    public func deleteAllThumbnails() -> Int {
+        let contents = (try? fm.contentsOfDirectory(at: thumbnailsDir,
+                                                    includingPropertiesForKeys: nil)) ?? []
+        var count = 0
+        for url in contents where url.pathExtension == "png" {
+            try? fm.removeItem(at: url)
+            count += 1
+        }
+        return count
+    }
+
     // MARK: - Delete
 
     public func delete(id: String) throws {

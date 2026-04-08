@@ -98,6 +98,37 @@ final class VaultState: ObservableObject {
         filterMaxSize = nil
     }
 
+    // MARK: - L5/L6: Thumbnails
+
+    /// Generate thumbnails for all extracted entries of the selected archive.
+    func generateThumbnailsForSelected() {
+        guard let vault, let entry = selectedEntry else { return }
+        let kids = (try? vault.entries(parentID: entry.id)) ?? []
+        for kid in kids {
+            ThumbnailGenerator.generateAndStore(vault: vault, entry: kid)
+        }
+    }
+
+    /// Rebuild all thumbnails in the vault.
+    func rebuildAllThumbnails() {
+        guard let vault else { return }
+        isProcessing = true
+        progressMessage = "Generating thumbnails…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let (generated, _) = ThumbnailGenerator.rebuildAll(vault: vault) { name, fraction in
+                DispatchQueue.main.async {
+                    self?.progressMessage = "Thumbnail: \(name)"
+                    self?.progressFraction = fraction
+                }
+            }
+            DispatchQueue.main.async {
+                self?.isProcessing = false
+                self?.progressMessage = nil
+                self?.error = "Generated \(generated) thumbnails."
+            }
+        }
+    }
+
     /// Is the selected entry an archive we can extract?
     var selectedIsArchive: Bool {
         guard let entry = selectedEntry, !entry.isDirectory else { return false }
@@ -626,6 +657,9 @@ final class VaultState: ObservableObject {
             }
 
             loadExtractedEntries()
+
+            // L5: Auto-generate thumbnails for newly extracted files
+            generateThumbnailsForSelected()
         } catch {
             self.error = "Extract failed: \(error.localizedDescription)"
         }

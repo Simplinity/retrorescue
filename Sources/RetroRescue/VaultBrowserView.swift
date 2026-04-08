@@ -535,10 +535,18 @@ struct VaultBrowserView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 80, maximum: 100))], spacing: 12) {
                 ForEach(state.filteredExtractedEntries) { entry in
                     VStack(spacing: 4) {
-                        Image(systemName: entry.isDirectory ? "folder.fill" : fileIcon(for: entry))
-                            .font(.system(size: 32))
-                            .foregroundStyle(entry.isDirectory ? .blue : .secondary)
-                            .frame(height: 40)
+                        // Show thumbnail if available, else SF Symbol
+                        if let vault = state.vault, let thumb = ThumbnailGenerator.loadThumbnail(vault: vault, id: entry.id) {
+                            Image(nsImage: thumb)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 40, height: 40)
+                        } else {
+                            Image(systemName: entry.isDirectory ? "folder.fill" : fileIcon(for: entry))
+                                .font(.system(size: 32))
+                                .foregroundStyle(entry.isDirectory ? .blue : .secondary)
+                                .frame(height: 40)
+                        }
                         Text(entry.name)
                             .font(.caption2)
                             .lineLimit(2)
