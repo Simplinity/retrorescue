@@ -787,6 +787,23 @@ struct VaultBrowserView: View {
                 }
             }
 
+            // Nested archive extract button
+            if state.selectedExtractedIsArchive {
+                Button {
+                    if let id = state.selectedExtractedID {
+                        state.extractEntry(id: id)
+                    }
+                } label: {
+                    Label("Extract Disk Image", systemImage: "archivebox.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.regular)
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
+
             // Text preview (only for text files)
             if let text = state.previewText {
                 Divider()

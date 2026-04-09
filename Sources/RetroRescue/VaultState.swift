@@ -140,6 +140,15 @@ final class VaultState: ObservableObject {
         !extractedEntries.isEmpty
     }
 
+    /// Is the selected extracted file itself an extractable archive?
+    var selectedExtractedIsArchive: Bool {
+        guard let id = selectedExtractedID,
+              let vault,
+              let entry = try? vault.entry(id: id) else { return false }
+        let hasKids = !((try? vault.entries(parentID: id)) ?? []).isEmpty
+        return !hasKids && Self.isExtractable(entry.name)
+    }
+
     /// Refresh cached disk image info for the selected entry.
     /// Called once on selection change for disk image extensions only.
     func refreshDiskImageInfo() {
