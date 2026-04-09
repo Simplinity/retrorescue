@@ -308,37 +308,7 @@ struct VaultBrowserView: View {
     }
 
     private var extractedFilesSection: some View {
-        VStack(spacing: 0) {
-            // Breadcrumb bar when drilled down
-            if !state.browsePath.isEmpty {
-                HStack(spacing: 4) {
-                    Button { state.drillUp() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    Text(state.browsePathNames.last ?? "")
-                        .font(.caption.weight(.medium))
-                        .lineLimit(1)
-                    Spacer()
-                    Text("\(state.extractedEntries.count) items")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.bar)
-                Divider()
-            }
-            // Flat file list
-            List(state.filteredExtractedEntries, selection: Binding(
-                get: { state.selectedExtractedID },
-                set: { state.selectExtractedFile(id: $0) }
-            )) { entry in
-                extractedFileRow(entry)
-            }
-            .listStyle(.inset(alternatesRowBackgrounds: true))
-        }
+        OutlineFileBrowserView(state: state)
     }
 
     private func extractedFileRow(_ entry: VaultEntry) -> some View {
