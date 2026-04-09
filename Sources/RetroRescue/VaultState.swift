@@ -255,18 +255,17 @@ final class VaultState: ObservableObject {
         let parentID = entry.id
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let entries = (try? vault.entries(parentID: parentID)) ?? []
-
-            let tree: [FileTreeNode]
-            if entries.count > 200 {
-                // Fast path: don't build tree at all, view uses extractedEntries directly
-                tree = []
-            } else {
-                tree = FileTreeNode.buildTree(parentID: parentID, vault: vault)
+            var allEntries = (try? vault.entries(parentID: parentID)) ?? []
+            // Also include children of extracted nested archives (e.g. ISO inside ZIP)
+            var nested: [VaultEntry] = []
+            for child in allEntries {
+                let kids = (try? vault.entries(parentID: child.id)) ?? []
+                if !kids.isEmpty { nested.append(contentsOf: kids) }
             }
+            allEntries.append(contentsOf: nested)
             DispatchQueue.main.async {
-                self.extractedEntries = entries
-                self.extractedTree = tree
+                self.extractedEntries = allEntries
+                self.extractedTree = []  // not used anymore for display
             }
         }
     }
@@ -451,7 +450,6 @@ final class VaultState: ObservableObject {
     /// Auto-previews if the file is previewable.
     func selectExtractedFile(id: String?) {
         selectedExtractedID = id
-        nestedChildren = []
         guard let vault, let id else {
             previewingEntry = nil
             previewText = nil
@@ -465,14 +463,6 @@ final class VaultState: ObservableObject {
             previewImage = nil
             return
         }
-        // Load nested children (e.g. files inside an extracted ISO)
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let kids = (try? vault.entries(parentID: id)) ?? []
-            if !kids.isEmpty {
-                DispatchQueue.main.async { self?.nestedChildren = kids }
-            }
-        }
-        // Delegate to unified preview cascade (I6-I12)
         previewFile(entry)
     }
 
