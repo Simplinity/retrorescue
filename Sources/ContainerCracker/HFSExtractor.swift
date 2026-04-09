@@ -514,41 +514,51 @@ public enum HFSExtractor {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        // Copy each file out using MacBinary mode (preserves type/creator/rsrc)
+        // Batch copy: generate a shell script to run all hcopy calls in ONE process
         var results: [ExtractedFile] = []
         let total = filePaths.count
-        progressCallback?("Found \(total) files, copying…", 0.3)
-        for (i, hfsPath) in filePaths.enumerated() {
-            let frac = 0.3 + 0.65 * Double(i) / Double(max(1, total))
-            let name = (hfsPath as NSString).lastPathComponent
-            if i % 5 == 0 {
-                progressCallback?("Copying \(name) (\(i+1)/\(total))…", frac)
-            }
+        progressCallback?("Found \(total) files, batch copying…", 0.3)
+
+        // Build batch script
+        let scriptURL = tempDir.appendingPathComponent("batch_hcopy.sh")
+        var script = "#!/bin/sh\n"
+        var safeNames: [(hfsPath: String, safeName: String)] = []
+        for hfsPath in filePaths {
             let safeName = hfsPath.replacingOccurrences(of: ":", with: "_")
+                .replacingOccurrences(of: "/", with: "_")
+            safeNames.append((hfsPath, safeName))
             let destPath = tempDir.appendingPathComponent(safeName).path
+            // Escape single quotes in paths
+            let escHfs = hfsPath.replacingOccurrences(of: "'", with: "'\\''")
+            let escDest = destPath.replacingOccurrences(of: "'", with: "'\\''")
+            script += "'\(hcopyPath)' -m '\(escHfs)' '\(escDest)' 2>/dev/null\n"
+        }
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
 
-            let cp = Process()
-            cp.executableURL = URL(fileURLWithPath: hcopyPath)
-            cp.arguments = ["-m", hfsPath, destPath]  // -m = MacBinary
-            cp.standardOutput = FileHandle.nullDevice
-            cp.standardError = FileHandle.nullDevice
-            try cp.run()
-            cp.waitUntilExit()
+        // Execute batch script as ONE process
+        let batch = Process()
+        batch.executableURL = URL(fileURLWithPath: "/bin/sh")
+        batch.arguments = [scriptURL.path]
+        batch.standardOutput = FileHandle.nullDevice
+        batch.standardError = FileHandle.nullDevice
+        try batch.run()
+        batch.waitUntilExit()
 
-            guard cp.terminationStatus == 0 else { continue }
+        progressCallback?("Reading \(total) extracted files…", 0.8)
 
-            // hcopy -m produces MacBinary files — parse them
-            let macBinData = try Data(contentsOf: URL(fileURLWithPath: destPath))
+        // Parse all extracted MacBinary files
+        for (i, entry) in safeNames.enumerated() {
+            let destPath = tempDir.appendingPathComponent(entry.safeName).path
+            guard FileManager.default.fileExists(atPath: destPath) else { continue }
+            guard let macBinData = try? Data(contentsOf: URL(fileURLWithPath: destPath)) else { continue }
             if let parsed = try? MacBinaryParser.parse(macBinData) {
                 results.append(parsed)
             } else {
-                // Fallback: raw data, use filename for name
-                let name = (hfsPath as NSString).lastPathComponent
-                results.append(ExtractedFile(
-                    name: name,
-                    dataFork: macBinData,
-                    rsrcFork: Data()
-                ))
+                let name = (entry.hfsPath as NSString).lastPathComponent
+                results.append(ExtractedFile(name: name, dataFork: macBinData, rsrcFork: Data()))
+            }
+            if i % 100 == 0 {
+                progressCallback?("Parsing file \(i+1)/\(total)…", 0.8 + 0.15 * Double(i) / Double(max(1, total)))
             }
         }
 
