@@ -253,7 +253,12 @@ final class VaultState: ObservableObject {
         }
         do {
             extractedEntries = try vault.entries(parentID: entry.id)
-            extractedTree = FileTreeNode.buildTree(parentID: entry.id, vault: vault)
+            // For large sets (>200 items), skip tree building — use flat list
+            if extractedEntries.count > 200 {
+                extractedTree = extractedEntries.map { FileTreeNode(entry: $0, vault: nil) }
+            } else {
+                extractedTree = FileTreeNode.buildTree(parentID: entry.id, vault: vault)
+            }
         } catch {
             extractedEntries = []
             extractedTree = []
