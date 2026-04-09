@@ -413,6 +413,9 @@ public enum HFSExtractor {
                                         hlsPath: String,
                                         hcopyPath: String,
                                         humountPath: String) throws -> [ExtractedFile] {
+        // Clean stale hfsutils state
+        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.hcwd")
+
         let mount = Process()
         mount.executableURL = URL(fileURLWithPath: hmountPath)
         mount.arguments = [imagePath]
@@ -468,6 +471,9 @@ public enum HFSExtractor {
                                    hlsPath: String,
                                    hcopyPath: String,
                                    humountPath: String) throws -> [ExtractedFile] {
+        // Clean stale hfsutils state
+        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.hcwd")
+
         // Mount the HFS image
         let mount = Process()
         mount.executableURL = URL(fileURLWithPath: hmountPath)
@@ -514,37 +520,46 @@ public enum HFSExtractor {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        // Batch copy: generate a shell script to run all hcopy calls in ONE process
+        // Batch copy in chunks of 100 with progress updates
         var results: [ExtractedFile] = []
         let total = filePaths.count
-        progressCallback?("Found \(total) files, batch copying…", 0.3)
+        progressCallback?("Found \(total) files, copying…", 0.3)
 
-        // Build batch script
-        let scriptURL = tempDir.appendingPathComponent("batch_hcopy.sh")
-        var script = "#!/bin/sh\n"
+        let chunkSize = 100
         var safeNames: [(hfsPath: String, safeName: String)] = []
         for hfsPath in filePaths {
             let safeName = hfsPath.replacingOccurrences(of: ":", with: "_")
                 .replacingOccurrences(of: "/", with: "_")
             safeNames.append((hfsPath, safeName))
-            let destPath = tempDir.appendingPathComponent(safeName).path
-            // Escape single quotes in paths
-            let escHfs = hfsPath.replacingOccurrences(of: "'", with: "'\\''")
-            let escDest = destPath.replacingOccurrences(of: "'", with: "'\\''")
-            script += "'\(hcopyPath)' -m '\(escHfs)' '\(escDest)' 2>/dev/null\n"
         }
-        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
 
-        // Execute batch script as ONE process
-        let batch = Process()
-        batch.executableURL = URL(fileURLWithPath: "/bin/sh")
-        batch.arguments = [scriptURL.path]
-        batch.standardOutput = FileHandle.nullDevice
-        batch.standardError = FileHandle.nullDevice
-        try batch.run()
-        batch.waitUntilExit()
+        for chunkStart in stride(from: 0, to: safeNames.count, by: chunkSize) {
+            let chunkEnd = min(chunkStart + chunkSize, safeNames.count)
+            let chunk = safeNames[chunkStart..<chunkEnd]
+            let frac = 0.3 + 0.5 * Double(chunkStart) / Double(max(1, total))
+            progressCallback?("Copying files \(chunkStart+1)-\(chunkEnd)/\(total)…", frac)
 
-        progressCallback?("Reading \(total) extracted files…", 0.8)
+            // Build mini batch script for this chunk
+            let scriptURL = tempDir.appendingPathComponent("chunk_\(chunkStart).sh")
+            var script = "#!/bin/sh\n"
+            for entry in chunk {
+                let destPath = tempDir.appendingPathComponent(entry.safeName).path
+                let escHfs = entry.hfsPath.replacingOccurrences(of: "'", with: "'\\''")
+                let escDest = destPath.replacingOccurrences(of: "'", with: "'\\''")
+                script += "'\(hcopyPath)' -m '\(escHfs)' '\(escDest)' 2>/dev/null\n"
+            }
+            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+
+            let batch = Process()
+            batch.executableURL = URL(fileURLWithPath: "/bin/sh")
+            batch.arguments = [scriptURL.path]
+            batch.standardOutput = FileHandle.nullDevice
+            batch.standardError = FileHandle.nullDevice
+            try batch.run()
+            batch.waitUntilExit()
+        }
+
+        progressCallback?("Reading \(total) extracted files…", 0.85)
 
         // Parse all extracted MacBinary files
         for (i, entry) in safeNames.enumerated() {
@@ -557,8 +572,8 @@ public enum HFSExtractor {
                 let name = (entry.hfsPath as NSString).lastPathComponent
                 results.append(ExtractedFile(name: name, dataFork: macBinData, rsrcFork: Data()))
             }
-            if i % 100 == 0 {
-                progressCallback?("Parsing file \(i+1)/\(total)…", 0.8 + 0.15 * Double(i) / Double(max(1, total)))
+            if i % 200 == 0 {
+                progressCallback?("Parsing file \(i+1)/\(total)…", 0.85 + 0.1 * Double(i) / Double(max(1, total)))
             }
         }
 
