@@ -670,10 +670,12 @@ final class VaultState: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                let archiveData = try vault.dataFork(for: id)
+                // Use symlink to avoid copying large files through memory
+                let dataURL = vault.dataForkURL(for: id)
                 let tempFile = FileManager.default.temporaryDirectory
                     .appendingPathComponent(entry.name)
-                try archiveData.write(to: tempFile)
+                try? FileManager.default.removeItem(at: tempFile)
+                try FileManager.default.createSymbolicLink(at: tempFile, withDestinationURL: dataURL)
                 defer { try? FileManager.default.removeItem(at: tempFile) }
 
                 DispatchQueue.main.async { self.progressMessage = "Parsing \(entry.name)…"; self.progressFraction = 0.2 }
@@ -688,8 +690,10 @@ final class VaultState: ObservableObject {
                 let ext = (entry.name as NSString).pathExtension.lowercased()
 
             if ext == "bny" || ext == "bqy" {
+                let archiveData = try Data(contentsOf: tempFile)
                 extracted = try BinaryIIParser.parseAll(archiveData)
             } else if ext == "acu" {
+                let archiveData = try Data(contentsOf: tempFile)
                 extracted = try AppleLinkParser.parseAll(archiveData)
             } else if HFSExtractor.canHandle(filename: entry.name),
                       let hm = ToolChain.shared.hmount,

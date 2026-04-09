@@ -242,6 +242,11 @@ public final class Vault {
         return try Data(contentsOf: path)
     }
 
+    /// Return the on-disk URL for a data fork (avoids loading into memory).
+    public func dataForkURL(for id: String) -> URL {
+        filesDir.appendingPathComponent(id).appendingPathComponent("data")
+    }
+
     public func rsrcFork(for id: String) throws -> Data {
         let path = filesDir.appendingPathComponent(id).appendingPathComponent("rsrc")
         guard fm.fileExists(atPath: path.path) else {
