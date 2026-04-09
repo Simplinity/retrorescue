@@ -61,12 +61,15 @@ class FileTreeNode: Identifiable, ObservableObject {
         let topLevel = (try? vault.entries(parentID: parentID)) ?? []
         return topLevel.map { entry in
             let node = FileTreeNode(entry: entry, vault: vault)
-            // For expandable entries, eagerly load first level of children
             if node.children != nil {
-                node.loadChildrenIfNeeded()
-                // If no children found, mark as leaf (remove disclosure triangle)
-                if node.children?.isEmpty == true {
-                    node.children = nil
+                let kids = (try? vault.entries(parentID: entry.id)) ?? []
+                if kids.isEmpty {
+                    node.children = nil  // no disclosure triangle
+                } else if kids.count <= 200 {
+                    node.children = kids.map { FileTreeNode(entry: $0, vault: vault) }
+                } else {
+                    // >200 children: flat nodes, no further nesting
+                    node.children = kids.map { FileTreeNode(entry: $0, vault: nil) }
                 }
             }
             return node

@@ -251,17 +251,21 @@ final class VaultState: ObservableObject {
             previewImage = nil
             return
         }
-        do {
-            extractedEntries = try vault.entries(parentID: entry.id)
-            // For large sets (>200 items), skip tree building — use flat list
-            if extractedEntries.count > 200 {
-                extractedTree = extractedEntries.map { FileTreeNode(entry: $0, vault: nil) }
+        // Load on background thread to prevent UI freeze on large archives
+        let parentID = entry.id
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let entries = (try? vault.entries(parentID: parentID)) ?? []
+            let tree: [FileTreeNode]
+            if entries.count > 200 {
+                tree = entries.map { FileTreeNode(entry: $0, vault: nil) }
             } else {
-                extractedTree = FileTreeNode.buildTree(parentID: entry.id, vault: vault)
+                tree = FileTreeNode.buildTree(parentID: parentID, vault: vault)
             }
-        } catch {
-            extractedEntries = []
-            extractedTree = []
+            DispatchQueue.main.async {
+                self.extractedEntries = entries
+                self.extractedTree = tree
+            }
         }
     }
 
