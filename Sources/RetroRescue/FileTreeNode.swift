@@ -58,7 +58,18 @@ class FileTreeNode: Identifiable, ObservableObject {
 
     /// Build a flat tree of nodes for a given parent.
     static func buildTree(parentID: String, vault: Vault) -> [FileTreeNode] {
-        let entries = (try? vault.entries(parentID: parentID)) ?? []
-        return entries.map { FileTreeNode(entry: $0, vault: vault) }
+        let topLevel = (try? vault.entries(parentID: parentID)) ?? []
+        return topLevel.map { entry in
+            let node = FileTreeNode(entry: entry, vault: vault)
+            // For expandable entries, eagerly load first level of children
+            if node.children != nil {
+                node.loadChildrenIfNeeded()
+                // If no children found, mark as leaf (remove disclosure triangle)
+                if node.children?.isEmpty == true {
+                    node.children = nil
+                }
+            }
+            return node
+        }
     }
 }
