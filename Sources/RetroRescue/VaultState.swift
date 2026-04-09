@@ -667,6 +667,12 @@ final class VaultState: ObservableObject {
         progressFraction = 0.1
         extractingEntryID = id
 
+        // Capture @MainActor tool paths before background dispatch
+        let hmountPath = ToolChain.shared.hmount
+        let hlsPath = ToolChain.shared.hls
+        let hcopyPath = ToolChain.shared.hcopy
+        let humountPath = ToolChain.shared.humount
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
@@ -696,10 +702,10 @@ final class VaultState: ObservableObject {
                 let archiveData = try Data(contentsOf: tempFile)
                 extracted = try AppleLinkParser.parseAll(archiveData)
             } else if HFSExtractor.canHandle(filename: entry.name),
-                      let hm = ToolChain.shared.hmount,
-                      let hl = ToolChain.shared.hls,
-                      let hc = ToolChain.shared.hcopy,
-                      let hu = ToolChain.shared.humount {
+                      let hm = hmountPath,
+                      let hl = hlsPath,
+                      let hc = hcopyPath,
+                      let hu = humountPath {
                 extracted = try HFSExtractor.extract(
                     imageURL: tempFile,
                     hmountPath: hm, hlsPath: hl,
