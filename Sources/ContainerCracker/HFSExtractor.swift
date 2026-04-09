@@ -42,10 +42,10 @@ public enum HFSExtractor {
         proc.standardOutput = pipe
         proc.standardError = errPipe
         try proc.run()
-        proc.waitUntilExit()
 
         let plistData = pipe.fileHandleForReading.readDataToEndOfFile()
         let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
         let errStr = String(data: errData, encoding: .utf8) ?? ""
         guard proc.terminationStatus == 0 else {
             throw ContainerError.unsupportedFormat("hdiutil attach failed for \(imageURL.lastPathComponent): \(errStr.prefix(200))")
@@ -205,10 +205,10 @@ public enum HFSExtractor {
         ls.standardOutput = lsPipe
         ls.standardError = FileHandle.nullDevice
         try ls.run()
-        ls.waitUntilExit()
 
         let lsOutput = String(data: lsPipe.fileHandleForReading.readDataToEndOfFile(),
                               encoding: .macOSRoman) ?? ""
+        ls.waitUntilExit()
 
         var items: [HFSItem] = []
         var dirs: Set<String> = []
@@ -508,10 +508,10 @@ public enum HFSExtractor {
         ls.standardOutput = lsPipe
         ls.standardError = FileHandle.nullDevice
         try ls.run()
-        ls.waitUntilExit()
 
         let lsOutput = String(data: lsPipe.fileHandleForReading.readDataToEndOfFile(),
                               encoding: .macOSRoman) ?? ""
+        ls.waitUntilExit()
         let filePaths = parseHLSOutput(lsOutput)
 
         // Create temp dir for extraction
