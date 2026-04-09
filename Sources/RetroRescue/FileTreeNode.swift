@@ -21,11 +21,14 @@ class FileTreeNode: Identifiable, ObservableObject {
     init(entry: VaultEntry, vault: Vault?) {
         self.entry = entry
         self.vault = vault
-        // No DB queries in init! Determine expandability from entry properties only.
+        // Check if this entry has children in the vault (directories OR extracted archives)
         if entry.isDirectory {
-            self.children = []  // expandable
+            self.children = []  // expandable directory
+        } else if let vault, let kids = try? vault.entries(parentID: entry.id), !kids.isEmpty {
+            // Non-directory with children (e.g. extracted .img/.dsk)
+            self.children = kids.map { FileTreeNode(entry: $0, vault: vault) }
         } else {
-            self.children = nil  // leaf — children loaded on demand via reloadChildren()
+            self.children = nil  // leaf
         }
     }
 
