@@ -33,16 +33,19 @@ public enum HFSExtractor {
         let fm = FileManager.default
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        proc.arguments = ["attach", imageURL.path, "-nobrowse", "-readonly", "-plist"]
+        proc.arguments = ["attach", imageURL.path, "-nobrowse", "-readonly", "-noverify", "-plist"]
         let pipe = Pipe()
+        let errPipe = Pipe()
         proc.standardOutput = pipe
-        proc.standardError = Pipe()
+        proc.standardError = errPipe
         try proc.run()
         proc.waitUntilExit()
 
         let plistData = pipe.fileHandleForReading.readDataToEndOfFile()
+        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        let errStr = String(data: errData, encoding: .utf8) ?? ""
         guard proc.terminationStatus == 0 else {
-            throw ContainerError.unsupportedFormat("hdiutil attach failed for \(imageURL.lastPathComponent)")
+            throw ContainerError.unsupportedFormat("hdiutil attach failed for \(imageURL.lastPathComponent): \(errStr.prefix(200))")
         }
 
         // Parse plist to find mount point
@@ -307,9 +310,19 @@ public enum HFSExtractor {
                                hcopyPath: String,
                                humountPath: String) throws -> [ExtractedFile] {
 
-        // ISO/Toast/CDR: mount via hdiutil (avoids loading 600+ MB into memory)
+        // ISO/Toast/CDR/DMG: try hmount first (handles hybrid HFS/ISO CDs),
+        // then fall back to hdiutil if hmount fails
         if needsHdiutil(filename: imageURL.lastPathComponent) {
-            return try extractViaHdiutil(imageURL: imageURL)
+            // Try hfsutils directly on the file (works for hybrid HFS/ISO)
+            do {
+                return try extractViaHfsutils(
+                    imageURL: imageURL,
+                    hmountPath: hmountPath, hlsPath: hlsPath,
+                    hcopyPath: hcopyPath, humountPath: humountPath)
+            } catch {
+                // hmount failed — try hdiutil as fallback
+                return try extractViaHdiutil(imageURL: imageURL)
+            }
         }
 
         // Parse the disk image and get raw HFS data
@@ -371,6 +384,18 @@ public enum HFSExtractor {
     }
 
     /// Detect DiskCopy 4.2 format: magic 0x0100 at offset 82-83.
+    /// Extract files from a disk image using hfsutils directly (hmount + hls + hcopy).
+    /// Works for hybrid HFS/ISO CDs, raw HFS images, and any hmount-compatible format.
+    private static func extractViaHfsutils(
+        imageURL: URL,
+        hmountPath: String, hlsPath: String,
+        hcopyPath: String, humountPath: String
+    ) throws -> [ExtractedFile] {
+        return try extractHFS(imagePath: imageURL.path,
+                              hmountPath: hmountPath, hlsPath: hlsPath,
+                              hcopyPath: hcopyPath, humountPath: humountPath)
+    }
+
     private static func isDiskCopy42(_ data: Data) -> Bool {
         guard data.count > 84 else { return false }
         return data[82] == 0x01 && data[83] == 0x00
