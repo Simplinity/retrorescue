@@ -70,19 +70,6 @@ struct VaultBrowserView: View {
                 )) { entry in
                     FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
                         .contextMenu { sidebarContextMenu(for: entry) }
-                        // K16: Lazy drag — only writes temp file when drag actually starts
-                        .onDrag {
-                            let provider = NSItemProvider()
-                            provider.registerFileRepresentation(forTypeIdentifier: "public.data", visibility: .all) { completion in
-                                if let url = self.state.writeTempFileForExport(entry) {
-                                    completion(url, true, nil)
-                                } else {
-                                    completion(nil, false, nil)
-                                }
-                                return nil
-                            }
-                            return provider
-                        }
                 }
             }
             statusBar
