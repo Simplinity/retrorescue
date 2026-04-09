@@ -39,7 +39,7 @@ struct VaultBrowserView: View {
             PreferencesView()
         }
         // K19: Progress overlay
-        .overlay { progressOverlay }
+        // Progress is now shown inline under extracting entries
         // K15: Keyboard shortcuts
         .onKeyPress(.space) {
             if let entry = state.previewingEntry { state.quickLook(entry); return .handled }
@@ -68,8 +68,13 @@ struct VaultBrowserView: View {
                         state.select(entry)
                     }
                 )) { entry in
-                    FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
-                        .contextMenu { sidebarContextMenu(for: entry) }
+                    VStack(spacing: 0) {
+                        FileRowView(entry: entry, isExtracted: state.isAlreadyExtracted(id: entry.id))
+                            .contextMenu { sidebarContextMenu(for: entry) }
+                        if state.extractingEntryID == entry.id {
+                            inlineProgressBar
+                        }
+                    }
                 }
             }
             statusBar
@@ -609,24 +614,24 @@ struct VaultBrowserView: View {
 
     @State private var showPreferences = false
 
-    // MARK: - K19: Progress Overlay
+    // MARK: - Inline Progress Bar
 
-    private var progressOverlay: some View {
-        Group {
-            if state.isProcessing {
-                VStack(spacing: 12) {
-                    ProgressView(value: state.progressFraction)
-                        .progressViewStyle(.linear)
-                        .frame(width: 250)
-                    Text(state.progressMessage ?? "Processing…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(24)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                .shadow(radius: 8)
+    /// Subtle inline progress bar: grey background, orange fill.
+    private var inlineProgressBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(height: 4)
+                Capsule()
+                    .fill(Color.orange)
+                    .frame(width: max(4, geo.size.width * state.progressFraction), height: 4)
+                    .animation(.easeInOut(duration: 0.3), value: state.progressFraction)
             }
         }
+        .frame(height: 4)
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
     }
 
     // MARK: - Context Menus
@@ -801,6 +806,19 @@ struct VaultBrowserView: View {
                 .controlSize(.regular)
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+            }
+
+            // Inline progress bar for nested extraction
+            if let extractID = state.extractingEntryID,
+               extractID == state.selectedExtractedID {
+                VStack(spacing: 2) {
+                    inlineProgressBar
+                    Text(state.progressMessage ?? "Extracting…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
             }

@@ -41,6 +41,7 @@ final class VaultState: ObservableObject {
     @Published var progressMessage: String?
     @Published var progressFraction: Double = 0
     @Published var isProcessing = false
+    @Published var extractingEntryID: String?
 
     /// Generic item for selective import (works for both unar and HFS).
     struct SelectiveImportItem: Identifiable, Hashable {
@@ -664,6 +665,7 @@ final class VaultState: ObservableObject {
         isProcessing = true
         progressMessage = "Extracting \(entry.name)…"
         progressFraction = 0.1
+        extractingEntryID = id
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
@@ -699,7 +701,7 @@ final class VaultState: ObservableObject {
                 return
             }
             guard !extracted.isEmpty else {
-                DispatchQueue.main.async { self.isProcessing = false; self.progressMessage = nil; self.error = "Archive appears to be empty" }
+                DispatchQueue.main.async { self.isProcessing = false; self.progressMessage = nil; self.extractingEntryID = nil; self.error = "Archive appears to be empty" }
                 return
             }
 
@@ -733,9 +735,10 @@ final class VaultState: ObservableObject {
                 SpotlightIndexer.shared.reindexVault(vault)
                 self.isProcessing = false
                 self.progressMessage = nil
+                self.extractingEntryID = nil
             }
             } catch {
-                DispatchQueue.main.async { self.isProcessing = false; self.progressMessage = nil; self.error = "Extract failed: \(error.localizedDescription)" }
+                DispatchQueue.main.async { self.isProcessing = false; self.progressMessage = nil; self.extractingEntryID = nil; self.error = "Extract failed: \(error.localizedDescription)" }
             }
         }
     }
