@@ -21,15 +21,21 @@ class FileTreeNode: Identifiable, ObservableObject {
     init(entry: VaultEntry, vault: Vault?) {
         self.entry = entry
         self.vault = vault
-        // Check if this entry has children in the vault (directories OR extracted archives)
         if entry.isDirectory {
-            self.children = []  // expandable directory
-        } else if let vault, let kids = try? vault.entries(parentID: entry.id), !kids.isEmpty {
-            // Non-directory with children (e.g. extracted .img/.dsk)
-            self.children = kids.map { FileTreeNode(entry: $0, vault: vault) }
+            self.children = []  // expandable, loaded on demand
+        } else if Self.isExtractableType(entry.name) {
+            // Archives might have extracted children — mark as expandable
+            self.children = []  // will check lazily
         } else {
             self.children = nil  // leaf
         }
+    }
+
+    private static func isExtractableType(_ name: String) -> Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        return ["img", "image", "dsk", "disk", "hfs", "hfv", "iso", "toast",
+                "sit", "sit", "zip", "rar", "7z", "cpt", "sea", "bin",
+                "2mg", "2img", "po", "do", "bny", "bqy", "acu"].contains(ext)
     }
 
     /// Load children on demand (called when user expands a node).
