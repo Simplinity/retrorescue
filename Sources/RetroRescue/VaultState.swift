@@ -565,12 +565,6 @@ final class VaultState: ObservableObject {
                     SelectiveImportItem(id: String(i), name: f.name, path: f.name,
                                        size: Int64(f.dataFork.count), isDirectory: false)
                 }
-            } else if UnarExtractor.canHandle(filename: entry.name) {
-                let archiveItems = try UnarExtractor.listContents(archiveURL: tempFile)
-                items = archiveItems.map { item in
-                    SelectiveImportItem(id: item.id, name: item.name, path: item.name,
-                                       size: item.size, isDirectory: false)
-                }
             } else if HFSExtractor.canHandle(filename: entry.name),
                       let hm = ToolChain.shared.hmount,
                       let hl = ToolChain.shared.hls,
@@ -582,6 +576,12 @@ final class VaultState: ObservableObject {
                                        size: 0, isDirectory: item.isDirectory)
                 }
                 title = volName ?? entry.name
+            } else if UnarExtractor.canHandle(filename: entry.name) {
+                let archiveItems = try UnarExtractor.listContents(archiveURL: tempFile)
+                items = archiveItems.map { item in
+                    SelectiveImportItem(id: item.id, name: item.name, path: item.name,
+                                       size: item.size, isDirectory: false)
+                }
             }
 
             selectiveImportItems = items
@@ -620,8 +620,6 @@ final class VaultState: ObservableObject {
             } else if ext2 == "acu" {
                 let allFiles = try AppleLinkParser.parseAll(archiveData)
                 extracted = allFiles.filter { selectedPaths.contains($0.name) }
-            } else if UnarExtractor.canHandle(filename: entry.name) {
-                extracted = try UnarExtractor.extract(archiveURL: tempFile, onlyFiles: selectedPaths)
             } else if HFSExtractor.canHandle(filename: entry.name),
                       let hm = ToolChain.shared.hmount,
                       let hl = ToolChain.shared.hls,
@@ -630,6 +628,8 @@ final class VaultState: ObservableObject {
                 extracted = try HFSExtractor.extractSelected(
                     imageURL: tempFile, selectedPaths: selectedPaths,
                     hmountPath: hm, hlsPath: hl, hcopyPath: hc, humountPath: hu)
+            } else if UnarExtractor.canHandle(filename: entry.name) {
+                extracted = try UnarExtractor.extract(archiveURL: tempFile, onlyFiles: selectedPaths)
             } else {
                 self.error = "No extraction tool available"
                 return
@@ -685,8 +685,6 @@ final class VaultState: ObservableObject {
                 extracted = try BinaryIIParser.parseAll(archiveData)
             } else if ext == "acu" {
                 extracted = try AppleLinkParser.parseAll(archiveData)
-            } else if UnarExtractor.canHandle(filename: entry.name) {
-                extracted = try UnarExtractor.extract(archiveURL: tempFile)
             } else if HFSExtractor.canHandle(filename: entry.name),
                       let hm = ToolChain.shared.hmount,
                       let hl = ToolChain.shared.hls,
@@ -696,6 +694,8 @@ final class VaultState: ObservableObject {
                     imageURL: tempFile,
                     hmountPath: hm, hlsPath: hl,
                     hcopyPath: hc, humountPath: hu)
+            } else if UnarExtractor.canHandle(filename: entry.name) {
+                extracted = try UnarExtractor.extract(archiveURL: tempFile)
             } else {
                 self.error = "No extraction tool available for \(entry.name)"
                 return

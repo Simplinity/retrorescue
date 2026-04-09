@@ -14,7 +14,75 @@ public enum HFSExtractor {
         "2mg", "2img",  // 2IMG (Apple II Universal Disk Image)
         "po",           // ProDOS-order block image
         "do",           // DOS-order block image
+        "iso",          // ISO 9660 / hybrid HFS CD-ROM
+        "toast",        // Roxio Toast disc image
+        "cdr",          // macOS CD/DVD master
     ]
+
+    /// Extensions that should be mounted via hdiutil instead of hfsutils.
+    private static let hdiutilExtensions: Set<String> = ["iso", "toast", "cdr", "dmg"]
+
+    /// Check if this file should use hdiutil mount (large disc images).
+    public static func needsHdiutil(filename: String) -> Bool {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        return hdiutilExtensions.contains(ext)
+    }
+
+    /// Extract files from an ISO/Toast/CDR/DMG via hdiutil mount.
+    public static func extractViaHdiutil(imageURL: URL) throws -> [ExtractedFile] {
+        let fm = FileManager.default
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        proc.arguments = ["attach", imageURL.path, "-nobrowse", "-readonly", "-plist"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = Pipe()
+        try proc.run()
+        proc.waitUntilExit()
+
+        let plistData = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard proc.terminationStatus == 0 else {
+            throw ContainerError.unsupportedFormat("hdiutil attach failed for \(imageURL.lastPathComponent)")
+        }
+
+        // Parse plist to find mount point
+        guard let plist = try? PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any],
+              let entities = plist["system-entities"] as? [[String: Any]],
+              let mountPoint = entities.compactMap({ $0["mount-point"] as? String }).first
+        else {
+            throw ContainerError.unsupportedFormat("Could not find mount point for \(imageURL.lastPathComponent)")
+        }
+
+        defer {
+            let detach = Process()
+            detach.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+            detach.arguments = ["detach", mountPoint, "-force"]
+            try? detach.run()
+            detach.waitUntilExit()
+        }
+
+        // Recursively collect all files
+        let mountURL = URL(fileURLWithPath: mountPoint)
+        var results: [ExtractedFile] = []
+        if let enumerator = fm.enumerator(at: mountURL,
+                                          includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                                          options: [.skipsHiddenFiles]) {
+            for case let fileURL as URL in enumerator {
+                let attrs = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
+                guard attrs?.isRegularFile == true else { continue }
+                let relativePath = fileURL.path.replacingOccurrences(of: mountPoint + "/", with: "")
+                let name = fileURL.lastPathComponent
+                let data = (try? Data(contentsOf: fileURL)) ?? Data()
+                // Read resource fork if present
+                let rsrcURL = fileURL.appendingPathComponent("..namedfork/rsrc")
+                let rsrc = (try? Data(contentsOf: rsrcURL)) ?? Data()
+                results.append(ExtractedFile(
+                    name: name, dataFork: data, rsrcFork: rsrc,
+                    typeCode: "", creatorCode: "", finderFlags: 0))
+            }
+        }
+        return results
+    }
 
     public static func canHandle(filename: String) -> Bool {
         let ext = (filename as NSString).pathExtension.lowercased()
@@ -238,6 +306,11 @@ public enum HFSExtractor {
                                hlsPath: String,
                                hcopyPath: String,
                                humountPath: String) throws -> [ExtractedFile] {
+
+        // ISO/Toast/CDR: mount via hdiutil (avoids loading 600+ MB into memory)
+        if needsHdiutil(filename: imageURL.lastPathComponent) {
+            return try extractViaHdiutil(imageURL: imageURL)
+        }
 
         // Parse the disk image and get raw HFS data
         let (rawData, info) = try DiskImageParser.extractRawData(from: imageURL)

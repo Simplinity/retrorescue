@@ -128,6 +128,11 @@ public enum DiskImageParser {
                         return .hybridISO_HFS
                     }
                 }
+                // Check for APM with 2048-byte blocks (CD-ROM)
+                if data.count > 4096 && data[0] == 0x45 && data[1] == 0x52
+                   && data[2048] == 0x50 && data[2049] == 0x4D {
+                    return .hybridISO_HFS  // APM-partitioned CD with HFS
+                }
                 return .iso9660
             }
         }
@@ -515,9 +520,26 @@ public enum DiskImageParser {
             return (rawData, info)
 
         case .iso9660:
-            // ISO 9660 should be handled by unar, not HFS extraction
-            throw ContainerError.unsupportedFormat(
-                "This is an ISO 9660 disc image. Use the standard archive extraction path (unar) for this format.")
+            // ISO 9660: may contain HFS via APM with 2048-byte blocks.
+            // Use hdiutil to convert to raw — it handles all CD-ROM variants.
+            let rawURL = try convertWithHdiutil(url)
+            let rawData = try Data(contentsOf: rawURL)
+            try? FileManager.default.removeItem(at: rawURL)
+            let fs = detectFilesystem(rawData: rawData)
+            if fs == .unknown {
+                // Check for APM with 2048-byte blocks (CD-ROM)
+                if rawData.count > 4096 && rawData[0] == 0x45 && rawData[1] == 0x52 {
+                    // DDR present — try APM extraction with the raw data
+                    if let (partData, partFS) = APMParser.findBestPartition(rawData) {
+                        return (partData, ImageInfo(format: .iso9660, filesystem: partFS,
+                                    diskName: nil, dataSize: partData.count,
+                                    diskType: "ISO 9660 / APM hybrid"))
+                    }
+                }
+            }
+            return (rawData, ImageInfo(format: .iso9660, filesystem: fs,
+                        diskName: nil, dataSize: rawData.count,
+                        diskType: "ISO 9660 disc image"))
 
         case .hybridISO_HFS:
             // Hybrid disc: extract the HFS partition
