@@ -301,8 +301,10 @@ final class VaultState: ObservableObject {
 
     func addFiles(urls: [URL]) {
         guard let vault else { return }
-        isImporting = true
-        defer { isImporting = false }
+        isProcessing = true
+        progressMessage = "Importing \(urls.count) file(s)…"
+        progressFraction = 0.1
+        defer { isProcessing = false; progressMessage = nil }
 
         for url in urls {
             do {
@@ -596,8 +598,10 @@ final class VaultState: ObservableObject {
         guard let entry = try? vault.entry(id: entryID) else { return }
 
         showSelectiveImport = false
-        isImporting = true
-        defer { isImporting = false }
+        isProcessing = true
+        progressMessage = "Importing selected files…"
+        progressFraction = 0.1
+        defer { isProcessing = false; progressMessage = nil }
 
         do {
             let archiveData = try vault.dataFork(for: entryID)
@@ -657,18 +661,23 @@ final class VaultState: ObservableObject {
         let existing = (try? vault.entries(parentID: id)) ?? []
         guard existing.isEmpty else { return }
 
-        isImporting = true
-        defer { isImporting = false }
+        isProcessing = true
+        progressMessage = "Extracting \(entry.name)…"
+        progressFraction = 0.1
 
-        do {
-            let archiveData = try vault.dataFork(for: id)
-            let tempFile = FileManager.default.temporaryDirectory
-                .appendingPathComponent(entry.name)
-            try archiveData.write(to: tempFile)
-            defer { try? FileManager.default.removeItem(at: tempFile) }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                let archiveData = try vault.dataFork(for: id)
+                let tempFile = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(entry.name)
+                try archiveData.write(to: tempFile)
+                defer { try? FileManager.default.removeItem(at: tempFile) }
 
-            let extracted: [ExtractedFile]
-            let ext = (entry.name as NSString).pathExtension.lowercased()
+                DispatchQueue.main.async { self.progressMessage = "Parsing \(entry.name)…"; self.progressFraction = 0.2 }
+
+                let extracted: [ExtractedFile]
+                let ext = (entry.name as NSString).pathExtension.lowercased()
 
             if ext == "bny" || ext == "bqy" {
                 extracted = try BinaryIIParser.parseAll(archiveData)
@@ -690,11 +699,14 @@ final class VaultState: ObservableObject {
                 return
             }
             guard !extracted.isEmpty else {
-                self.error = "Archive appears to be empty"
+                DispatchQueue.main.async { self.isProcessing = false; self.progressMessage = nil; self.error = "Archive appears to be empty" }
                 return
             }
 
-            for file in extracted {
+            let total = extracted.count
+            DispatchQueue.main.async { self.progressMessage = "Storing \(total) files…"; self.progressFraction = 0.5 }
+
+            for (i, file) in extracted.enumerated() {
                 try vault.addFile(
                     name: file.name,
                     data: file.dataFork,
@@ -705,16 +717,26 @@ final class VaultState: ObservableObject {
                     sourceArchive: entry.name,
                     parentID: id
                 )
+                if i % 10 == 0 {
+                    let frac = 0.5 + 0.4 * Double(i) / Double(max(1, total))
+                    DispatchQueue.main.async { self.progressFraction = frac; self.progressMessage = "Storing file \(i+1)/\(total)…" }
+                }
             }
 
-            loadExtractedEntries()
-
-            // L5: Auto-generate thumbnails for newly extracted files
-            generateThumbnailsForSelected()
-            // L8: Re-index vault for Spotlight
-            SpotlightIndexer.shared.reindexVault(vault)
-        } catch {
-            self.error = "Extract failed: \(error.localizedDescription)"
+            DispatchQueue.main.async {
+                self.progressMessage = "Finalizing…"
+                self.progressFraction = 0.95
+                self.loadExtractedEntries()
+                // L5: Auto-generate thumbnails for newly extracted files
+                self.generateThumbnailsForSelected()
+                // L8: Re-index vault for Spotlight
+                SpotlightIndexer.shared.reindexVault(vault)
+                self.isProcessing = false
+                self.progressMessage = nil
+            }
+            } catch {
+                DispatchQueue.main.async { self.isProcessing = false; self.progressMessage = nil; self.error = "Extract failed: \(error.localizedDescription)" }
+            }
         }
     }
 
