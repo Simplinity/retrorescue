@@ -470,6 +470,7 @@ struct VaultBrowserView: View {
     // MARK: - K12: Filter Popover
 
     @State private var showFilterPopover = false
+    @State private var imageZoom: Double = 1.0
 
     private var filterButton: some View {
         Button {
@@ -816,22 +817,69 @@ struct VaultBrowserView: View {
                 }
             }
 
-            // Image preview (PICT → PNG)
+            // Image preview (PICT, MacPaint, icons)
             if let image = state.previewImage {
                 Divider()
-                ScrollView {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .padding(8)
-                }
+                imagePreview(image)
             }
 
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(.bar)
+    }
+
+    /// Image preview with zoom control
+    private func imagePreview(_ image: NSImage) -> some View {
+        VStack(spacing: 0) {
+            // Zoom toolbar
+            HStack(spacing: 8) {
+                Button { imageZoom = max(0.25, imageZoom - 0.25) } label: {
+                    Image(systemName: "minus.magnifyingglass")
+                }
+                .buttonStyle(.plain)
+
+                Text("\(Int(imageZoom * 100))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40)
+
+                Button { imageZoom = min(4.0, imageZoom + 0.25) } label: {
+                    Image(systemName: "plus.magnifyingglass")
+                }
+                .buttonStyle(.plain)
+
+                Button { imageZoom = 1.0 } label: {
+                    Text("Fit")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text("\(Int(image.size.width))×\(Int(image.size.height))")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+
+            // Scrollable image with zoom
+            ScrollView([.horizontal, .vertical]) {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(
+                        width: min(image.size.width, 280) * imageZoom,
+                        height: min(image.size.height, 200) * imageZoom
+                    )
+                    .padding(4)
+            }
+            .frame(maxHeight: 220)
+            .background(Color(nsColor: .controlBackgroundColor))
+        }
+        .onChange(of: state.previewingEntry?.id) { _, _ in imageZoom = 1.0 }
     }
 
     private func inspectorIcon(for entry: VaultEntry) -> String {
