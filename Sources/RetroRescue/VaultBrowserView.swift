@@ -308,6 +308,42 @@ struct VaultBrowserView: View {
     }
 
     private var extractedFilesSection: some View {
+        Group {
+            if state.extractedEntries.count > 200 {
+                // Fast path: simple List with VaultEntry structs, no ObservableObject overhead
+                List(state.extractedEntries, selection: Binding(
+                    get: { state.selectedExtractedID },
+                    set: { state.selectExtractedFile(id: $0) }
+                )) { entry in
+                    HStack {
+                        Image(systemName: entry.isDirectory ? "folder.fill" : "doc")
+                            .foregroundStyle(entry.isDirectory ? .blue : .secondary)
+                            .frame(width: 16)
+                        Text(entry.name).lineLimit(1)
+                        Spacer()
+                        if let tc = entry.typeCode, !tc.isEmpty {
+                            Text(tc).font(.caption).foregroundStyle(.tertiary)
+                        }
+                        Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .contextMenu {
+                        Button { state.previewFile(entry) } label: { Label("Preview", systemImage: "eye") }
+                        Button { state.exportToFinder(entry) } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                        Button { state.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye.fill") }
+                        Divider()
+                        Button(role: .destructive) { state.selectedExtractedID = entry.id; state.deleteSelectedExtractedFile() } label: { Label("Delete", systemImage: "trash") }
+                    }
+                }
+                .listStyle(.inset(alternatesRowBackgrounds: true))
+            } else {
+                // Tree path: full FileTreeNode with expand/collapse
+                extractedFilesTree
+            }
+        }
+    }
+
+    private var extractedFilesTree: some View {
         List(state.extractedTree, children: \.children, selection: Binding(
             get: { state.selectedExtractedID },
             set: { state.selectExtractedFile(id: $0) }
