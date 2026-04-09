@@ -308,41 +308,41 @@ struct VaultBrowserView: View {
     }
 
     private var extractedFilesSection: some View {
-        List(state.filteredExtractedEntries, selection: Binding(
+        List(state.extractedStructTree, children: \.children, selection: Binding(
             get: { state.selectedExtractedID },
             set: { state.selectExtractedFile(id: $0) }
-        )) { entry in
+        )) { node in
             HStack(spacing: 6) {
-                Image(systemName: entry.isDirectory ? "folder.fill" :
-                        VaultState.isExtractable(entry.name) ? "archivebox" : "doc")
-                    .foregroundStyle(entry.isDirectory ? .blue :
-                        VaultState.isExtractable(entry.name) ? .orange : .secondary)
+                Image(systemName: node.children != nil ? "folder.fill" :
+                        VaultState.isExtractable(node.entry.name) ? "archivebox" : "doc")
+                    .foregroundStyle(node.children != nil ? .blue :
+                        VaultState.isExtractable(node.entry.name) ? .orange : .secondary)
                     .frame(width: 16)
-                Text(entry.name).lineLimit(1)
+                Text(node.entry.name).lineLimit(1)
                 Spacer()
-                if entry.rsrcForkSize > 0 {
+                if node.entry.rsrcForkSize > 0 {
                     Image(systemName: "fork.knife").font(.caption2).foregroundStyle(.purple)
                 }
-                if let tc = entry.typeCode, !tc.isEmpty {
+                if let tc = node.entry.typeCode, !tc.isEmpty {
                     Text(tc).font(.caption).foregroundStyle(.tertiary).frame(width: 40)
                 }
-                Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
+                Text(ByteCountFormatter.string(fromByteCount: node.entry.dataForkSize, countStyle: .file))
                     .font(.caption).foregroundStyle(.secondary).frame(width: 60, alignment: .trailing)
             }
             .contextMenu {
-                Button { state.previewFile(entry) } label: { Label("Preview", systemImage: "eye") }
-                Button { state.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye.fill") }
-                Button { state.openInDefaultApp(entry) } label: { Label("Open", systemImage: "arrow.up.right.square") }
+                Button { state.previewFile(node.entry) } label: { Label("Preview", systemImage: "eye") }
+                Button { state.quickLook(node.entry) } label: { Label("Quick Look", systemImage: "eye.fill") }
+                Button { state.openInDefaultApp(node.entry) } label: { Label("Open", systemImage: "arrow.up.right.square") }
                 Divider()
-                if VaultState.isExtractable(entry.name) {
-                    Button { state.extractEntry(id: entry.id) } label: { Label("Extract", systemImage: "archivebox.fill") }
+                if VaultState.isExtractable(node.entry.name) {
+                    Button { state.extractEntry(id: node.entry.id) } label: { Label("Extract", systemImage: "archivebox.fill") }
                 }
-                Button { state.exportToFinder(entry) } label: { Label("Export to Finder", systemImage: "square.and.arrow.up") }
-                Button { state.convertToModernFormat(entry: entry) } label: { Label("Convert", systemImage: "arrow.triangle.2.circlepath") }
-                Button { state.getInfoEntry = entry } label: { Label("Get Info", systemImage: "info.circle") }
+                Button { state.exportToFinder(node.entry) } label: { Label("Export to Finder", systemImage: "square.and.arrow.up") }
+                Button { state.convertToModernFormat(entry: node.entry) } label: { Label("Convert", systemImage: "arrow.triangle.2.circlepath") }
+                Button { state.getInfoEntry = node.entry } label: { Label("Get Info", systemImage: "info.circle") }
                 Divider()
                 Button(role: .destructive) {
-                    state.selectedExtractedID = entry.id
+                    state.selectedExtractedID = node.entry.id
                     state.deleteSelectedExtractedFile()
                 } label: { Label("Delete", systemImage: "trash") }
             }

@@ -210,6 +210,7 @@ final class VaultState: ObservableObject {
         selectedEntry = nil
         extractedEntries = []
         extractedTree = []
+            extractedStructTree = []
     }
 
     func refreshEntries() {
@@ -255,17 +256,34 @@ final class VaultState: ObservableObject {
         let parentID = entry.id
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            var allEntries = (try? vault.entries(parentID: parentID)) ?? []
-            // Also include children of extracted nested archives (e.g. ISO inside ZIP)
-            var nested: [VaultEntry] = []
-            for child in allEntries {
-                let kids = (try? vault.entries(parentID: child.id)) ?? []
-                if !kids.isEmpty { nested.append(contentsOf: kids) }
-            }
-            allEntries.append(contentsOf: nested)
+            let entries = (try? vault.entries(parentID: parentID)) ?? []
+            // Build struct-based tree (fast: no ObservableObject overhead)
+            let tree = Self.buildStructTree(entries: entries, vault: vault)
             DispatchQueue.main.async {
-                self.extractedEntries = allEntries
-                self.extractedTree = []  // not used anymore for display
+                self.extractedEntries = entries
+                self.extractedStructTree = tree
+            }
+        }
+    }
+
+    /// Lightweight struct for tree display — no ObservableObject, just data.
+    struct TreeEntry: Identifiable {
+        let id: String
+        let entry: VaultEntry
+        var children: [TreeEntry]?
+    }
+
+    @Published var extractedStructTree: [TreeEntry] = []
+
+    /// Build a struct tree from vault entries. One level of nesting only.
+    private static func buildStructTree(entries: [VaultEntry], vault: Vault) -> [TreeEntry] {
+        return entries.map { entry in
+            let kids = (try? vault.entries(parentID: entry.id)) ?? []
+            if kids.isEmpty {
+                return TreeEntry(id: entry.id, entry: entry, children: nil)
+            } else {
+                let childNodes = kids.map { TreeEntry(id: $0.id, entry: $0, children: nil) }
+                return TreeEntry(id: entry.id, entry: entry, children: childNodes)
             }
         }
     }
