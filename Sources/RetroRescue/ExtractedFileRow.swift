@@ -12,6 +12,7 @@ struct ExtractedFileRow: View {
     var onOpen: ((VaultEntry) -> Void)?
     var onPreview: ((VaultEntry) -> Void)?
     var onConvert: ((VaultEntry) -> Void)?
+    var onDelete: ((String) -> Void)?
     var onExport: ((VaultEntry) -> Void)?
     var onDragFile: ((VaultEntry) -> URL?)?
     var onGetInfo: ((VaultEntry) -> Void)?
@@ -129,7 +130,7 @@ struct ExtractedFileRow: View {
 
             Divider()
 
-            Button(role: .destructive) { showNotImplemented("Delete") } label: {
+            Button(role: .destructive) { onDelete?(node.entry.id) } label: {
                 Label("Delete", systemImage: "trash")
             }
         }

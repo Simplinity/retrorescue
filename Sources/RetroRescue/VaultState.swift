@@ -387,10 +387,28 @@ final class VaultState: ObservableObject {
             // Recursively delete all descendants first
             try deleteDescendants(of: entry.id)
             try vault.delete(id: entry.id)
+            vault.deleteThumbnail(for: entry.id)
             selectedEntry = nil
             extractedEntries = []
             extractedTree = []
             refreshEntries()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Delete the currently selected extracted file (right panel).
+    func deleteSelectedExtractedFile() {
+        guard let vault, let id = selectedExtractedID else { return }
+        do {
+            try deleteDescendants(of: id)
+            try vault.delete(id: id)
+            vault.deleteThumbnail(for: id)
+            selectedExtractedID = nil
+            previewingEntry = nil
+            previewText = nil
+            previewImage = nil
+            loadExtractedEntries()
         } catch {
             self.error = error.localizedDescription
         }

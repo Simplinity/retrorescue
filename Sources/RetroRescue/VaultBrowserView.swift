@@ -324,6 +324,9 @@ struct VaultBrowserView: View {
                 state.previewFile(entry)
             } onConvert: { entry in
                 state.convertToModernFormat(entry: entry)
+            } onDelete: { entryID in
+                state.selectedExtractedID = entryID
+                state.deleteSelectedExtractedFile()
             } onExport: { entry in
                 state.exportToFinder(entry)
             } onDragFile: { entry in
