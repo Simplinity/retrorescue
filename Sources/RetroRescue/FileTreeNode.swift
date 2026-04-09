@@ -6,8 +6,9 @@ import ContainerCracker
 /// Used to drive SwiftUI's outline List for Finder-style file browsing.
 class FileTreeNode: Identifiable, ObservableObject {
     let entry: VaultEntry
-    private let vault: Vault?
+    let vault: Vault?
     var id: String { entry.id }
+    var childCount: Int = 0
 
     @Published var children: [FileTreeNode]?
 
@@ -62,14 +63,16 @@ class FileTreeNode: Identifiable, ObservableObject {
         return topLevel.map { entry in
             let node = FileTreeNode(entry: entry, vault: vault)
             if node.children != nil {
-                let kids = (try? vault.entries(parentID: entry.id)) ?? []
-                if kids.isEmpty {
+                let kidCount = (try? vault.entries(parentID: entry.id))?.count ?? 0
+                if kidCount == 0 {
                     node.children = nil  // no disclosure triangle
-                } else if kids.count <= 200 {
+                } else if kidCount <= 200 {
+                    let kids = (try? vault.entries(parentID: entry.id)) ?? []
                     node.children = kids.map { FileTreeNode(entry: $0, vault: vault) }
                 } else {
-                    // >200 children: flat nodes, no further nesting
-                    node.children = kids.map { FileTreeNode(entry: $0, vault: nil) }
+                    // >200: don't pre-load, mark with count for lazy loading
+                    node.childCount = kidCount
+                    node.children = nil  // no tree expansion
                 }
             }
             return node

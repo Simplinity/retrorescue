@@ -880,6 +880,36 @@ struct VaultBrowserView: View {
                 imagePreview(image)
             }
 
+            // Nested children (e.g. files inside extracted ISO)
+            if !state.nestedChildren.isEmpty {
+                Divider()
+                HStack {
+                    Text("\(state.nestedChildren.count) extracted files")
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                List(state.nestedChildren, selection: Binding(
+                    get: { state.selectedExtractedID },
+                    set: { state.selectExtractedFile(id: $0) }
+                )) { entry in
+                    HStack {
+                        Image(systemName: "doc")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16)
+                        Text(entry.name).lineLimit(1).font(.callout)
+                        Spacer()
+                        if let tc = entry.typeCode, !tc.isEmpty {
+                            Text(tc).font(.caption2).foregroundStyle(.tertiary)
+                        }
+                        Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .listStyle(.plain)
+            }
+
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
