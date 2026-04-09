@@ -678,6 +678,12 @@ final class VaultState: ObservableObject {
 
                 DispatchQueue.main.async { self.progressMessage = "Parsing \(entry.name)…"; self.progressFraction = 0.2 }
 
+                // Wire HFS progress to UI
+                HFSExtractor.progressCallback = { [weak self] msg, frac in
+                    DispatchQueue.main.async { self?.progressMessage = msg; self?.progressFraction = frac }
+                }
+                defer { HFSExtractor.progressCallback = nil }
+
                 let extracted: [ExtractedFile]
                 let ext = (entry.name as NSString).pathExtension.lowercased()
 

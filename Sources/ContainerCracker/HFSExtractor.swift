@@ -6,6 +6,9 @@ import VaultEngine
 /// For release: will be rewritten in native Swift.
 public enum HFSExtractor {
 
+    /// Progress callback: (message, fraction 0-1). Set before calling extract().
+    public static var progressCallback: ((String, Double) -> Void)?
+
     /// File extensions we recognize as HFS disk images.
     public static let supportedExtensions: Set<String> = [
         "img", "image", "dsk", "disk",
@@ -491,6 +494,7 @@ public enum HFSExtractor {
         }
 
         // List all files recursively
+        progressCallback?("Scanning HFS directory…", 0.15)
         let ls = Process()
         ls.executableURL = URL(fileURLWithPath: hlsPath)
         ls.arguments = ["-R", "-1"]
@@ -512,7 +516,14 @@ public enum HFSExtractor {
 
         // Copy each file out using MacBinary mode (preserves type/creator/rsrc)
         var results: [ExtractedFile] = []
-        for hfsPath in filePaths {
+        let total = filePaths.count
+        progressCallback?("Found \(total) files, copying…", 0.3)
+        for (i, hfsPath) in filePaths.enumerated() {
+            let frac = 0.3 + 0.65 * Double(i) / Double(max(1, total))
+            let name = (hfsPath as NSString).lastPathComponent
+            if i % 5 == 0 {
+                progressCallback?("Copying \(name) (\(i+1)/\(total))…", frac)
+            }
             let safeName = hfsPath.replacingOccurrences(of: ":", with: "_")
             let destPath = tempDir.appendingPathComponent(safeName).path
 
