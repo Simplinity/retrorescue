@@ -7,8 +7,9 @@ final class VaultState: ObservableObject {
     @Published var vault: Vault?
     @Published var entries: [VaultEntry] = []           // top-level vault items
     @Published var selectedEntry: VaultEntry?
-    @Published var extractedEntries: [VaultEntry] = []  // children of selected archive
-    @Published var extractedTree: [FileTreeNode] = []   // tree nodes for outline view
+    @Published var extractedEntries: [VaultEntry] = []  // currently visible entries
+    @Published var browsePath: [String] = []              // stack of parent IDs for drill-down
+    @Published var browsePathNames: [String] = []         // names for breadcrumb display
     @Published var previewingEntry: VaultEntry?          // file being previewed in right panel
     @Published var previewText: String?                  // text content for inline preview
     @Published var previewImage: NSImage?                // image for inline preview (PICT etc.)
@@ -19,7 +20,6 @@ final class VaultState: ObservableObject {
     @Published var searchResults: [VaultEntry]?      // nil = not searching
     @Published var getInfoEntry: VaultEntry?          // entry for Get Info sheet
     @Published var cachedDiskImageInfo: DiskImageParser.ImageInfo?  // cached, not computed
-    @Published var nestedChildren: [VaultEntry] = []  // children of selected extracted file (for large archives)
 
     // Selective import state
     @Published var showSelectiveImport = false
@@ -209,8 +209,8 @@ final class VaultState: ObservableObject {
         entries = []
         selectedEntry = nil
         extractedEntries = []
-        extractedTree = []
-            extractedStructTree = []
+        browsePath = []
+        browsePathNames = []
     }
 
     func refreshEntries() {
@@ -246,52 +246,60 @@ final class VaultState: ObservableObject {
     private func loadExtractedEntries() {
         guard let vault, let entry = selectedEntry else {
             extractedEntries = []
-            extractedTree = []
+            browsePath = []
+            browsePathNames = []
             selectedExtractedID = nil
             previewingEntry = nil
             previewText = nil
             previewImage = nil
             return
         }
-        let parentID = entry.id
+        browsePath = []
+        browsePathNames = []
+        loadEntriesForParent(entry.id)
+    }
+
+    /// Load entries for a specific parent (drill-down navigation).
+    func loadEntriesForParent(_ parentID: String) {
+        guard let vault else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
             let entries = (try? vault.entries(parentID: parentID)) ?? []
-            // Build struct-based tree (fast: no ObservableObject overhead)
-            let tree = Self.buildStructTree(entries: entries, vault: vault)
             DispatchQueue.main.async {
-                self.extractedEntries = entries
-                self.extractedStructTree = tree
+                self?.extractedEntries = entries
             }
         }
     }
 
-    /// Lightweight struct for tree display — no ObservableObject, just data.
-    struct TreeEntry: Identifiable {
-        let id: String
-        let entry: VaultEntry
-        var children: [TreeEntry]?
+    /// Drill into a folder or extracted archive to see its children.
+    func drillDown(into entry: VaultEntry) {
+        guard let vault else { return }
+        let kids = (try? vault.entries(parentID: entry.id)) ?? []
+        guard !kids.isEmpty else { return }
+        browsePath.append(entry.id)
+        browsePathNames.append(entry.name)
+        selectedExtractedID = nil
+        previewingEntry = nil
+        loadEntriesForParent(entry.id)
     }
 
-    @Published var extractedStructTree: [TreeEntry] = []
-
-    /// Build a struct tree from vault entries. One level of nesting only.
-    private static func buildStructTree(entries: [VaultEntry], vault: Vault) -> [TreeEntry] {
-        return entries.map { entry in
-            let kids = (try? vault.entries(parentID: entry.id)) ?? []
-            if kids.isEmpty {
-                return TreeEntry(id: entry.id, entry: entry, children: nil)
-            } else {
-                let childNodes = kids.map { TreeEntry(id: $0.id, entry: $0, children: nil) }
-                return TreeEntry(id: entry.id, entry: entry, children: childNodes)
-            }
+    /// Go back one level in drill-down navigation.
+    func drillUp() {
+        guard !browsePath.isEmpty else { return }
+        browsePath.removeLast()
+        browsePathNames.removeLast()
+        selectedExtractedID = nil
+        previewingEntry = nil
+        if let parentID = browsePath.last {
+            loadEntriesForParent(parentID)
+        } else if let entry = selectedEntry {
+            loadEntriesForParent(entry.id)
         }
     }
 
-    /// Load children of a specific entry (for tree expansion in right panel).
-    func children(of parentID: String) -> [VaultEntry] {
-        guard let vault else { return [] }
-        return (try? vault.entries(parentID: parentID)) ?? []
+    /// Check if an entry has children (for showing drill-down indicator).
+    func hasChildren(_ entryID: String) -> Bool {
+        guard let vault else { return false }
+        return ((try? vault.entries(parentID: entryID))?.isEmpty == false)
     }
 
     // MARK: - Search
@@ -418,7 +426,8 @@ final class VaultState: ObservableObject {
             vault.deleteThumbnail(for: entry.id)
             selectedEntry = nil
             extractedEntries = []
-            extractedTree = []
+            browsePath = []
+            browsePathNames = []
             refreshEntries()
         } catch {
             self.error = error.localizedDescription

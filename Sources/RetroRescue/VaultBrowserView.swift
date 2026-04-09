@@ -308,46 +308,93 @@ struct VaultBrowserView: View {
     }
 
     private var extractedFilesSection: some View {
-        List(state.extractedStructTree, children: \.children, selection: Binding(
-            get: { state.selectedExtractedID },
-            set: { state.selectExtractedFile(id: $0) }
-        )) { node in
-            HStack(spacing: 6) {
-                Image(systemName: node.children != nil ? "folder.fill" :
-                        VaultState.isExtractable(node.entry.name) ? "archivebox" : "doc")
-                    .foregroundStyle(node.children != nil ? .blue :
-                        VaultState.isExtractable(node.entry.name) ? .orange : .secondary)
-                    .frame(width: 16)
-                Text(node.entry.name).lineLimit(1)
-                Spacer()
-                if node.entry.rsrcForkSize > 0 {
-                    Image(systemName: "fork.knife").font(.caption2).foregroundStyle(.purple)
+        VStack(spacing: 0) {
+            // Breadcrumb bar when drilled down
+            if !state.browsePath.isEmpty {
+                HStack(spacing: 4) {
+                    Button { state.drillUp() } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    Text(state.browsePathNames.last ?? "")
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\(state.extractedEntries.count) items")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                if let tc = node.entry.typeCode, !tc.isEmpty {
-                    Text(tc).font(.caption).foregroundStyle(.tertiary).frame(width: 40)
-                }
-                Text(ByteCountFormatter.string(fromByteCount: node.entry.dataForkSize, countStyle: .file))
-                    .font(.caption).foregroundStyle(.secondary).frame(width: 60, alignment: .trailing)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.bar)
+                Divider()
             }
-            .contextMenu {
-                Button { state.previewFile(node.entry) } label: { Label("Preview", systemImage: "eye") }
-                Button { state.quickLook(node.entry) } label: { Label("Quick Look", systemImage: "eye.fill") }
-                Button { state.openInDefaultApp(node.entry) } label: { Label("Open", systemImage: "arrow.up.right.square") }
-                Divider()
-                if VaultState.isExtractable(node.entry.name) {
-                    Button { state.extractEntry(id: node.entry.id) } label: { Label("Extract", systemImage: "archivebox.fill") }
-                }
-                Button { state.exportToFinder(node.entry) } label: { Label("Export to Finder", systemImage: "square.and.arrow.up") }
-                Button { state.convertToModernFormat(entry: node.entry) } label: { Label("Convert", systemImage: "arrow.triangle.2.circlepath") }
-                Button { state.getInfoEntry = node.entry } label: { Label("Get Info", systemImage: "info.circle") }
-                Divider()
-                Button(role: .destructive) {
-                    state.selectedExtractedID = node.entry.id
-                    state.deleteSelectedExtractedFile()
-                } label: { Label("Delete", systemImage: "trash") }
+            // Flat file list
+            List(state.filteredExtractedEntries, selection: Binding(
+                get: { state.selectedExtractedID },
+                set: { state.selectExtractedFile(id: $0) }
+            )) { entry in
+                extractedFileRow(entry)
+            }
+            .listStyle(.inset(alternatesRowBackgrounds: true))
+        }
+    }
+
+    private func extractedFileRow(_ entry: VaultEntry) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: entry.isDirectory ? "folder.fill" :
+                    VaultState.isExtractable(entry.name) ? "archivebox" : "doc")
+                .foregroundStyle(entry.isDirectory ? .blue :
+                    VaultState.isExtractable(entry.name) ? .orange : .secondary)
+                .frame(width: 16)
+            Text(entry.name).lineLimit(1)
+            Spacer()
+            if entry.rsrcForkSize > 0 {
+                Image(systemName: "fork.knife").font(.caption2).foregroundStyle(.purple)
+            }
+            if let tc = entry.typeCode, !tc.isEmpty {
+                Text(tc).font(.caption).foregroundStyle(.tertiary).frame(width: 40)
+            }
+            Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
+                .font(.caption).foregroundStyle(.secondary).frame(width: 60, alignment: .trailing)
+            // Drill-down chevron for items with children
+            if state.hasChildren(entry.id) {
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            if state.hasChildren(entry.id) {
+                state.drillDown(into: entry)
+            } else {
+                state.quickLook(entry)
+            }
+        }
+        .onTapGesture(count: 1) {
+            state.selectExtractedFile(id: entry.id)
+        }
+        .contextMenu {
+            if state.hasChildren(entry.id) {
+                Button { state.drillDown(into: entry) } label: { Label("Open", systemImage: "arrow.right") }
+                Divider()
+            }
+            Button { state.previewFile(entry) } label: { Label("Preview", systemImage: "eye") }
+            Button { state.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye.fill") }
+            if VaultState.isExtractable(entry.name) {
+                Button { state.extractEntry(id: entry.id) } label: { Label("Extract", systemImage: "archivebox.fill") }
+            }
+            Divider()
+            Button { state.exportToFinder(entry) } label: { Label("Export", systemImage: "square.and.arrow.up") }
+            Button { state.getInfoEntry = entry } label: { Label("Get Info", systemImage: "info.circle") }
+            Divider()
+            Button(role: .destructive) {
+                state.selectedExtractedID = entry.id
+                state.deleteSelectedExtractedFile()
+            } label: { Label("Delete", systemImage: "trash") }
+        }
     }
 
     // MARK: - Search Results
