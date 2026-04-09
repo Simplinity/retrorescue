@@ -696,6 +696,9 @@ final class VaultState: ObservableObject {
             do {
                 // Use symlink to avoid copying large files through memory
                 let dataURL = vault.dataForkURL(for: id)
+                guard FileManager.default.fileExists(atPath: dataURL.path) else {
+                    throw ContainerError.unsupportedFormat("Data file missing for \(entry.name)")
+                }
                 let tempFile = FileManager.default.temporaryDirectory
                     .appendingPathComponent(entry.name)
                 try? FileManager.default.removeItem(at: tempFile)
