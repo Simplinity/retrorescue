@@ -1,6 +1,6 @@
 # RetroRescue — Complete Feature TODO List
 
-> Master checklist — updated April 9, 2026.
+> Master checklist — updated April 10, 2026.
 > ✅ = done | ❌ = v1 todo | 🔮 = v2
 
 ---
@@ -287,7 +287,7 @@
 
 
 
-## S. DOCUMENTATION — 5/7 (2 = v1 todo)
+## S. DOCUMENTATION — 6/7 (1 = v1 todo)
 
 | # | Feature | Status |
 |---|---------|--------|
@@ -296,7 +296,7 @@
 | S3 | FORMATS.md (supported file formats reference) | ✅ |
 | S4 | RELEASE-CHECKLIST.md (signing + notarization setup) | ✅ |
 | S5 | V2-PLANNING.md (all deferred decisions) | ✅ |
-| S6 | Update plan.md to match 19-section reality | ❌ v1 |
+| S6 | Update plan.md to match 19-section reality | ✅ |
 | S7 | User manual for retrorescue.app website | ❌ v1 |
 
 
@@ -307,19 +307,18 @@
 | Metric | Count |
 |--------|-------|
 | **Total features** | 201 |
-| **✅ Complete** | **177 (88%)** |
-| **❌ v1 todo** | **7** |
+| **✅ Complete** | **178 (89%)** |
+| **❌ v1 todo** | **6** |
 | **🔮 v2 deferred** | **17** |
 | **Test suites** | 17 |
 | **Total tests** | 152 |
-| **Test stability** | 5/5 runs, ~170ms |
+| **Test stability** | 5/5 runs, ~170-290ms |
 
-### v1 Remaining (7 items)
+### v1 Remaining (6 items)
 - O2: DMG installer
 - O3: Sparkle auto-update
 - O4: Homebrew cask
 - O5: Website
-- S6: Update plan.md
 - S7: User manual
 
 ### v2 Deferred (17 items)

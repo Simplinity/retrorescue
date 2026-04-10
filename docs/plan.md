@@ -1,6 +1,6 @@
 # RetroRescue — Technical Plan
 
-> Updated April 9, 2026. Organized in 19 sections (A–S).
+> Updated April 10, 2026. Organized in 19 sections (A–S).
 > For feature status see `docs/TODO.md`. For v2 decisions see `docs/V2-PLANNING.md`.
 
 ---
@@ -79,7 +79,9 @@ Binary resource fork parser (Mac resource map traversal), type registry (50+ kno
 
 ## I. Preview Engine (12 features)
 
-Unified preview cascade in `FilePreviewHelper.previewFile()`: text (MacRoman → UTF-8) → PICT (sips → PNG) → MacPaint (PackBits → 576×720) → icon from rsrc fork → snd → WAV → font metrics → resource fork overview → hex dump fallback. Waveform visualization for audio. Quick Look via qlmanage. Open in default app.
+Unified preview cascade in `VaultState.previewFile()`. Priority order: **font preview** (FontPreviewRenderer, see below) → text (MacRoman → UTF-8) → MacPaint (PackBits → 576×720) → PICT (sips → PNG) → icon from rsrc fork → resource fork overview → font metrics → hex dump fallback. Waveform visualization for audio. Quick Look via qlmanage. Open in default app.
+
+**FontPreviewRenderer** (Font Book–style, ~180 lines): renders real font samples using CoreText for any font format the vault contains. Detects fonts by extension (.ttf/.otf/.afm/.pfb/.dfont/.suit/.fond) AND Mac type code (sfnt/ttro/LWFN/FFIL/FONT/NFNT/FOND/tfil). For TTF/OTF/sfnt/ttro: writes data fork to a temp file with the right extension, loads via `CTFontManagerCreateFontDescriptorsFromURL`. For FFIL (Mac suitcase) and LWFN (PostScript Type 1): writes the resource fork as a `.dfont` (which is just resource fork content as a regular file) — CoreText reads it natively. For AFM (Adobe Font Metrics): parses `FontName`/`FullName`/`FamilyName`/`Weight`, tries `NSFont(name:)` lookup on the system, falls back to an info card. The sample sheet shows: font name header, uppercase/lowercase/digits at 24pt, and the pangram "The quick brown fox jumps over the lazy dog" at 12/18/24/36/48/64pt — drawn on a 600px-wide variable-height NSImage.
 
 ## J. Conversion Engine (13 features, 3 improvements = v2)
 
@@ -90,6 +92,20 @@ Unified preview cascade in `FilePreviewHelper.previewFile()`: text (MacRoman →
 ## K. UI/UX (19 features)
 
 SwiftUI app with: vault library (recent vaults), three-panel browser (archives / files / inspector), list/grid/column views, FTS5 toolbar search, filter popover (type/creator/rsrc), keyboard shortcuts (Space/Enter/Delete), lazy drag to Finder (NSItemProvider), window title with count, preferences panel, progress overlay for long operations. SF Symbols throughout. Apple HIG context menus.
+
+**Extracted-files browser — `OutlineFileBrowserController`** (~370 lines): full AppKit `NSViewController` hosting `NSOutlineView`, wrapped in SwiftUI via `NSViewControllerRepresentable`. Same architecture as CodeEdit, PixleyReader, Xcode, and Finder itself. SwiftUI's `List(children:)` and `OutlineGroup` cannot handle thousands of items (confirmed by Apple Developer Forums and the CodeEdit issue tracker — see `docs/TREE-VIEW-RESEARCH.md` for the 50+ apps surveyed). NSOutlineView uses a pull-based delegate pattern that only queries data for visible rows, so it handles 6000+ files instantly.
+
+Key pieces:
+- `FileOutlineItem` — `NSObject` wrapper around `VaultEntry` with lazy child loading from the Vault. Children are only fetched when NSOutlineView asks for them.
+- `NSOutlineViewDataSource`: `numberOfChildrenOfItem` / `child:ofItem:` / `isItemExpandable` — all delegate-based, all lazy.
+- `NSOutlineViewDelegate`: custom `NSTableCellView` cells with icon (folder/archivebox/doc), name, and ByteCountFormatter size.
+- Context menu: Preview, Quick Look, Extract, Export, Get Info, Delete (via `NSMenuDelegate`).
+- Double-click: expand/collapse for folders, Quick Look for leaves.
+- Auto-expand: when there are ≤5 root items (e.g. a ZIP containing a single ISO), the first level is expanded automatically.
+- Selection sync: `outlineViewSelectionDidChange` posts the selected entry ID back to `VaultState` via a callback closure.
+- `OutlineFileBrowserView` (SwiftUI wrapper): the Coordinator tracks `lastParentID` to prevent reload thrash when SwiftUI re-renders the parent view.
+
+This was the result of an extended debugging session that proved every SwiftUI tree approach (List(children:), OutlineGroup, custom FileTreeNode classes, struct-based TreeEntry) hangs or crashes with 6000+ items. The full research is in `docs/TREE-VIEW-RESEARCH.md`.
 
 ## L. Thumbnails & Search (8 features)
 
@@ -122,11 +138,11 @@ Vault merge (SHA-256 dedup), vault diff, statistics dashboard, catalog export (s
 
 ## R. Tests (152 tests in 17 suites)
 
-Swift Testing framework. 152 tests covering: MacBinary (18), BinHex (7), AppleDouble (9), VaultEngine (7), DiskImage (7), DART (5), APM (6), ResourceFork (9), MFS (4), Compression (8), Conversion (4), FilesystemReader (17), ArchiveParser (10), Integration (6), EdgeCases (32). 5/5 stability runs, ~170ms average.
+Swift Testing framework. 152 tests covering: MacBinary (18), BinHex (7), AppleDouble (9), VaultEngine (7), DiskImage (7), DART (5), APM (6), ResourceFork (9), MFS (4), Compression (8), Conversion (4), FilesystemReader (17), ArchiveParser (10), Integration (6), EdgeCases (32). 5/5 stability runs, ~170-290ms average.
 
-## S. Documentation (7 features, 2 = v1 todo)
+## S. Documentation (7 features, 1 = v1 todo)
 
-README, ARCHITECTURE, FORMATS, RELEASE-CHECKLIST, V2-PLANNING complete. **v1 todo**: S6 update this plan, S7 user manual.
+README, ARCHITECTURE, FORMATS, RELEASE-CHECKLIST, V2-PLANNING, plan.md (this file), and TREE-VIEW-RESEARCH (50+ apps surveyed for the file browser implementation choice) complete. **v1 todo**: S7 user manual for retrorescue.app website.
 
 ---
 
@@ -152,7 +168,7 @@ README, ARCHITECTURE, FORMATS, RELEASE-CHECKLIST, V2-PLANNING complete. **v1 tod
 | P. Advanced | 8 | 0 | 0 | 8 |
 | Q. Toolchain | 11 | 9 | 0 | 2 |
 | R. Tests | 11 | 11 | 0 | 0 |
-| S. Documentation | 7 | 5 | 2 | 0 |
-| **TOTAL** | **201** | **177** | **7** | **17** |
+| S. Documentation | 7 | 6 | 1 | 0 |
+| **TOTAL** | **201** | **178** | **6** | **17** |
 
-**177 of 201 features complete (88%). 7 items for v1 release. 17 items for v2.**
+**178 of 201 features complete (89%). 6 items for v1 release. 17 items for v2.**
