@@ -1,6 +1,6 @@
 # RetroRescue — Complete Feature TODO List
 
-> Master checklist — updated April 10, 2026.
+> Master checklist — updated April 10, 2026 (after WriteNow / libmwaw integration).
 > ✅ = done | ❌ = v1 todo | 🔮 = v2
 
 ---
@@ -148,7 +148,7 @@
 | I12 | Resource fork overview (type count + summary) | ✅ |
 
 
-## J. CONVERSION ENGINE — ✅ 10/13 (3 = v2)
+## J. CONVERSION ENGINE — ✅ 11/13 (2 = v2)
 
 | # | Feature | Status |
 |---|---------|--------|
@@ -165,6 +165,7 @@
 | J11 | Batch export (vault → dir + metadata.json + xattr) | ✅ |
 | J12 | Restore mode (vault → AppleDouble for emulators) | ✅ |
 | J13 | Plain text charset conversion (MacRoman/Cyrillic/Greek) | ✅ |
+| J14 | **WriteNow + 40 legacy Mac docs via libmwaw** | ✅ NEW |
 
 ## K. UI/UX — ✅ 19/19 COMPLETE
 
@@ -306,8 +307,8 @@
 
 | Metric | Count |
 |--------|-------|
-| **Total features** | 201 |
-| **✅ Complete** | **178 (89%)** |
+| **Total features** | 202 |
+| **✅ Complete** | **179 (89%)** |
 | **❌ v1 todo** | **6** |
 | **🔮 v2 deferred** | **17** |
 | **Test suites** | 17 |

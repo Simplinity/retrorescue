@@ -83,11 +83,13 @@ Unified preview cascade in `VaultState.previewFile()`. Priority order: **font pr
 
 **FontPreviewRenderer** (Font Book–style, ~180 lines): renders real font samples using CoreText for any font format the vault contains. Detects fonts by extension (.ttf/.otf/.afm/.pfb/.dfont/.suit/.fond) AND Mac type code (sfnt/ttro/LWFN/FFIL/FONT/NFNT/FOND/tfil). For TTF/OTF/sfnt/ttro: writes data fork to a temp file with the right extension, loads via `CTFontManagerCreateFontDescriptorsFromURL`. For FFIL (Mac suitcase) and LWFN (PostScript Type 1): writes the resource fork as a `.dfont` (which is just resource fork content as a regular file) — CoreText reads it natively. For AFM (Adobe Font Metrics): parses `FontName`/`FullName`/`FamilyName`/`Weight`, tries `NSFont(name:)` lookup on the system, falls back to an info card. The sample sheet shows: font name header, uppercase/lowercase/digits at 24pt, and the pangram "The quick brown fox jumps over the lazy dog" at 12/18/24/36/48/64pt — drawn on a 600px-wide variable-height NSImage.
 
-## J. Conversion Engine (13 features, 3 improvements = v2)
+## J. Conversion Engine (14 features, 2 improvements = v2)
 
-`ConversionEngine` with converters: PICT/MacPaint → PNG, icons → PNG, snd → WAV, TEXT → UTF-8, bitmap font → BDF, QuickTime → MP4 (ffmpeg), ClarisWorks/MacWrite → Markdown (text extraction). Batch export with metadata.json. Restore mode (AppleDouble for emulators). Charset conversion (MacRoman/Cyrillic/Greek/Latin1 → UTF-8).
+`ConversionEngine` with converters: PICT/MacPaint → PNG, icons → PNG, snd → WAV, TEXT → UTF-8, bitmap font → BDF, QuickTime → MP4 (ffmpeg), ClarisWorks/MacWrite → Markdown (text extraction), and **WriteNow + 40 legacy Mac document formats → Markdown** via the libmwaw library (see below). Batch export with metadata.json. Restore mode (AppleDouble for emulators). Charset conversion (MacRoman/Cyrillic/Greek/Latin1 → UTF-8).
 
-**v2**: J7+ font → TTF, J9+ ClarisWorks full formatting, J10+ MacWrite full formatting.
+**LegacyMacDocConverter** (~382 lines): wraps libmwaw 0.3.22 (LGPL-2.1+ / MPL-2.0, both compatible with our GPLv3 distribution) via shell-out to its `mwaw2text` and `mwaw2html` command-line tools. Handles WriteNow 1.0–4.0, MacWrite/MacWrite II/Pro, Microsoft Word 1–5.1 for Mac, Microsoft Works Mac 1–4, ClarisWorks/AppleWorks (WP/SS/DB/GR/PR/PT), Nisus Writer Classic, FullWrite Professional, WordPerfect Mac, RagTime, BeagleWorks, Ready Set Go!, More, Student Writing Center, MaxWrite, MindWrite, MouseWrite, eDOC, Zwrite, HanMac, LightWay Text, MariNer Write, DOCMaker. Detection cascade: Mac type code (40+ codes registered) → filename extension → magic-byte sniff for WriteNow (data fork starts with ASCII `"WriteNow"`). HTML output is converted to Markdown via a lightweight regex-based pipeline (`htmlToMarkdown` + `finishMarkdown`) that handles headings, bold, italic, underline, lists, paragraphs, common entities. Verified end-to-end with the official `libmwaw-regression` test corpus from SourceForge.
+
+**v2**: J7+ font → TTF, J9+/J10+ ClarisWorks/MacWrite full formatting (now partially handled by libmwaw path).
 
 ## K. UI/UX (19 features)
 
@@ -159,7 +161,7 @@ README, ARCHITECTURE, FORMATS, RELEASE-CHECKLIST, V2-PLANNING, plan.md (this fil
 | G. Compression | 5 | 5 | 0 | 0 |
 | H. Resource Fork Browser | 19 | 19 | 0 | 0 |
 | I. Preview Engine | 12 | 12 | 0 | 0 |
-| J. Conversion Engine | 13 | 10 | 0 | 3 |
+| J. Conversion Engine | 14 | 11 | 0 | 2 |
 | K. UI/UX | 19 | 19 | 0 | 0 |
 | L. Thumbnails & Search | 8 | 8 | 0 | 0 |
 | M. Web Integration | 4 | 4 | 0 | 0 |
@@ -169,6 +171,6 @@ README, ARCHITECTURE, FORMATS, RELEASE-CHECKLIST, V2-PLANNING, plan.md (this fil
 | Q. Toolchain | 11 | 9 | 0 | 2 |
 | R. Tests | 11 | 11 | 0 | 0 |
 | S. Documentation | 7 | 6 | 1 | 0 |
-| **TOTAL** | **201** | **178** | **6** | **17** |
+| **TOTAL** | **202** | **179** | **6** | **17** |
 
-**178 of 201 features complete (89%). 6 items for v1 release. 17 items for v2.**
+**179 of 202 features complete (89%). 6 items for v1 release. 17 items for v2.**
