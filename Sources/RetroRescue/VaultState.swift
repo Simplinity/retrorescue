@@ -501,6 +501,14 @@ final class VaultState: ObservableObject {
 
         guard let vault else { return }
 
+        // 0. Font preview (highest priority for fonts) — TTF/OTF/sfnt/LWFN/FFIL/AFM
+        if FontPreviewRenderer.isFont(entry) {
+            if let img = FontPreviewRenderer.renderPreview(vault: vault, entry: entry) {
+                previewImage = img
+                return
+            }
+        }
+
         // 1. Text preview (highest priority)
         if FilePreviewHelper.isTextPreviewable(entry: entry) {
             previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)
