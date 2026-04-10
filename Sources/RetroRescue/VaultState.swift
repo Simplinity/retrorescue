@@ -514,6 +514,19 @@ final class VaultState: ObservableObject {
             }
         }
 
+        // 0.5. Legacy Mac documents via libmwaw — WriteNow, MacWrite II/Pro,
+        // ClarisWorks, Word 1-5 Mac, Works, Nisus, FullWrite, RagTime, etc.
+        // Must come BEFORE text preview because many of these have type code
+        // checks that would fall through to hex dump otherwise.
+        if LegacyMacDocConverter.canConvert(entry, vault: vault) {
+            if let md = LegacyMacDocConverter.convertToMarkdown(vault: vault, entry: entry),
+               !md.isEmpty {
+                let formatName = LegacyMacDocConverter.formatName(for: entry) ?? "Legacy Mac document"
+                previewText = "_\(formatName)_\n\n" + md
+                return
+            }
+        }
+
         // 1. Text preview (highest priority)
         if FilePreviewHelper.isTextPreviewable(entry: entry) {
             previewText = FilePreviewHelper.readTextContent(vault: vault, entry: entry)

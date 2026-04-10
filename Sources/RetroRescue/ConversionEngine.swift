@@ -356,6 +356,7 @@ public enum ConversionEngine {
     public static func canConvert(entry: VaultEntry, vault: Vault) -> Bool {
         if FilePreviewHelper.isPICT(entry: entry) { return true }
         if FilePreviewHelper.isMacPaint(entry: entry) { return true }
+        if LegacyMacDocConverter.canConvert(entry, vault: vault) { return true }
         if isClarisWorks(Data(), typeCode: entry.typeCode) { return true }
         if isMacWrite(Data(), typeCode: entry.typeCode) { return true }
         if entry.typeCode == "TEXT" || entry.typeCode == "ttro" { return true }
@@ -368,6 +369,10 @@ public enum ConversionEngine {
     public static func conversionTarget(entry: VaultEntry) -> String? {
         if FilePreviewHelper.isPICT(entry: entry) { return "PNG image" }
         if FilePreviewHelper.isMacPaint(entry: entry) { return "PNG image" }
+        if LegacyMacDocConverter.canConvert(entry) {
+            let name = LegacyMacDocConverter.formatName(for: entry) ?? "legacy Mac document"
+            return "Markdown text (from \(name))"
+        }
         if isClarisWorks(Data(), typeCode: entry.typeCode) { return "Markdown text" }
         if isMacWrite(Data(), typeCode: entry.typeCode) { return "Markdown text" }
         if entry.typeCode == "TEXT" || entry.typeCode == "ttro" { return "UTF-8 text (.txt)" }
@@ -394,6 +399,14 @@ public enum ConversionEngine {
                let bitmap = NSBitmapImageRep(data: tiff),
                let png = bitmap.representation(using: .png, properties: [:]) {
                 return (baseName + ".png", png)
+            }
+        }
+        // Legacy Mac docs (WriteNow, MacWrite II/Pro, Word 1-5, Works, Nisus,
+        // ClarisWorks, FullWrite, RagTime, …) → Markdown via libmwaw
+        if LegacyMacDocConverter.canConvert(entry, vault: vault) {
+            if let md = LegacyMacDocConverter.convertToMarkdown(vault: vault, entry: entry),
+               let mdData = md.data(using: .utf8) {
+                return (baseName + ".md", mdData)
             }
         }
         // ClarisWorks → Markdown

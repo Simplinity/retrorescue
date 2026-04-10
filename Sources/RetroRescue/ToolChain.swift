@@ -46,6 +46,9 @@ final class ToolChain: ObservableObject {
     var hls: String?       { tools["hls"]?.path }
     var humount: String?   { tools["humount"]?.path }
     var hformat: String?   { tools["hformat"]?.path }
+    var mwaw2html: String? { tools["mwaw2html"]?.path }
+    var mwaw2text: String? { tools["mwaw2text"]?.path }
+    var mwawFile: String?  { tools["mwawFile"]?.path }
 
     // MARK: - Feature flags
 
@@ -55,6 +58,7 @@ final class ToolChain: ObservableObject {
     var canConvertDocuments: Bool { textutil != nil }
     var canTranscodeMedia: Bool { ffmpeg != nil }
     var canQuickLook: Bool { qlmanage != nil }
+    var canConvertLegacyMacDocs: Bool { mwaw2html != nil || mwaw2text != nil }
 
     // MARK: - Init
 
@@ -110,6 +114,18 @@ final class ToolChain: ObservableObject {
                  homebrew: "/opt/homebrew/bin/ffmpeg")
         register("ffprobe", purpose: "Media file analysis (optional)",
                  homebrew: "/opt/homebrew/bin/ffprobe")
+
+        // libmwaw — legacy Mac document converters (WriteNow, MacWrite II/Pro,
+        // ClarisWorks, Word 1-5 for Mac, Works, Nisus, FullWrite, RagTime, ...)
+        register("mwaw2html", purpose: "Legacy Mac document → HTML (WriteNow, MacWrite, Word…)",
+                 bundled: "\(toolsDir)/mwaw2html",
+                 homebrew: "/opt/homebrew/bin/mwaw2html")
+        register("mwaw2text", purpose: "Legacy Mac document → plain text",
+                 bundled: "\(toolsDir)/mwaw2text",
+                 homebrew: "/opt/homebrew/bin/mwaw2text")
+        register("mwawFile", purpose: "Identify legacy Mac document format",
+                 bundled: "\(toolsDir)/mwawFile",
+                 homebrew: "/opt/homebrew/bin/mwawFile")
     }
 
     // MARK: - Registration
