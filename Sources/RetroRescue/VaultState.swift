@@ -139,7 +139,12 @@ final class VaultState: ObservableObject {
 
     /// Does the selected entry have extracted children?
     var selectedHasExtracted: Bool {
-        !extractedEntries.isEmpty
+        // Check the vault directly (not extractedEntries) so we don't show
+        // the "extract prompt" UI flash while extractedEntries is being
+        // (re)loaded asynchronously after a sidebar selection change.
+        guard let vault, let entry = selectedEntry else { return false }
+        let kids = (try? vault.entries(parentID: entry.id)) ?? []
+        return !kids.isEmpty
     }
 
     /// Is the selected extracted file itself an extractable archive?
