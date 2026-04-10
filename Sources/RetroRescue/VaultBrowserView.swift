@@ -763,11 +763,11 @@ struct VaultBrowserView: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.name)
-                        .font(.callout.weight(.medium))
+                        .font(.body.weight(.medium))
                         .lineLimit(1)
                     if let desc = FilePreviewHelper.fileTypeDescription(entry: entry) {
                         Text(desc)
-                            .font(.caption)
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -788,23 +788,23 @@ struct VaultBrowserView: View {
             .padding(.bottom, 4)
 
             // Metadata grid
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
                 GridRow {
-                    Text("Size").font(.caption).foregroundStyle(.secondary)
+                    Text("Size").font(.callout).foregroundStyle(.secondary)
                     Text(ByteCountFormatter.string(fromByteCount: entry.dataForkSize, countStyle: .file))
-                        .font(.caption)
+                        .font(.callout)
                 }
                 if entry.hasResourceFork {
                     GridRow {
-                        Text("Resource").font(.caption).foregroundStyle(.secondary)
+                        Text("Resource").font(.callout).foregroundStyle(.secondary)
                         Text(ByteCountFormatter.string(fromByteCount: entry.rsrcForkSize, countStyle: .file))
-                            .font(.caption)
+                            .font(.callout)
                     }
                 }
                 if let tc = entry.typeCreatorDisplay {
                     GridRow {
-                        Text("Type/Creator").font(.caption).foregroundStyle(.secondary)
-                        Text(tc).font(.system(.caption, design: .monospaced))
+                        Text("Type/Creator").font(.callout).foregroundStyle(.secondary)
+                        Text(tc).font(.system(.callout, design: .monospaced))
                     }
                 }
             }
@@ -815,7 +815,7 @@ struct VaultBrowserView: View {
             if let info = FilePreviewHelper.fileTypeInfoDetailed(entry: entry) {
                 if let history = info.history {
                     Text(history)
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)
@@ -858,7 +858,7 @@ struct VaultBrowserView: View {
                 Divider()
                 ScrollView {
                     Text(text)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.system(.callout, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
