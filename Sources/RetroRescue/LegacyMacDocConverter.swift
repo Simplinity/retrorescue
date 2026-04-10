@@ -57,6 +57,56 @@ extension LegacyMacDocConverter {
         guard let tc = entry.typeCode else { return nil }
         return legacyMacTypeCodeNames[tc]
     }
+
+    /// Human-readable name of the source format, using type code first then
+    /// magic-byte sniffing of the data fork as a fallback.
+    static func formatName(for entry: VaultEntry, vault: Vault) -> String? {
+        if let name = formatName(for: entry) { return name }
+        // Magic-byte detection
+        guard let data = try? vault.dataFork(for: entry.id), data.count >= 8
+        else { return nil }
+        if data.prefix(8) == Data("WriteNow".utf8) {
+            // Try to distinguish version via mwawFile if available
+            if let detected = identifyViaMwawFile(vault: vault, entry: entry) {
+                return detected
+            }
+            return "WriteNow Document"
+        }
+        return nil
+    }
+
+    /// Ask `mwawFile` what format it thinks this file is. Returns the
+    /// human-readable label libmwaw uses (e.g. "WriteNow 3-4", "MacWrite II").
+    private static func identifyViaMwawFile(vault: Vault, entry: VaultEntry) -> String? {
+        guard let mwawFile = toolPath("mwawFile") else { return nil }
+        guard let tempInput = writeTempForkFile(vault: vault, entry: entry)
+        else { return nil }
+        defer {
+            try? FileManager.default.removeItem(
+                at: tempInput.deletingLastPathComponent())
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: mwawFile)
+        // -f suppresses the filename prefix
+        process.arguments = ["-f", tempInput.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let raw = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let label = raw, !label.isEmpty else { return nil }
+            return label
+        } catch {
+            return nil
+        }
+    }
 }
 
 // MARK: - Recognized formats
@@ -256,9 +306,11 @@ extension LegacyMacDocConverter {
 private extension LegacyMacDocConverter {
 
     /// Write vault entry's data fork to a temp file for libmwaw to read.
+    /// If the entry has a resource fork, also writes a sibling AppleDouble
+    /// `._<filename>` companion file so libmwaw can read both forks.
     /// Most supported formats (WriteNow, MacWrite, ClarisWorks, Word, …) store
-    /// their content in the data fork. A few formats also need the resource
-    /// fork — for those, mwaw will gracefully fail and we fall back to hex.
+    /// their content in the data fork — but libmwaw uses the resource fork to
+    /// pick up styling, fonts, and metadata where available.
     static func writeTempForkFile(vault: Vault, entry: VaultEntry) -> URL? {
         guard let data = try? vault.dataFork(for: entry.id), !data.isEmpty
         else { return nil }
@@ -277,16 +329,29 @@ private extension LegacyMacDocConverter {
         let safeName = entry.name
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")
-        let tempURL = tempDir.appendingPathComponent(
-            safeName.isEmpty ? "document" : safeName)
+        let baseName = safeName.isEmpty ? "document" : safeName
+        let tempURL = tempDir.appendingPathComponent(baseName)
 
         do {
             try data.write(to: tempURL)
-            return tempURL
         } catch {
             try? FileManager.default.removeItem(at: tempDir)
             return nil
         }
+
+        // If a resource fork exists, write a sibling AppleDouble companion.
+        if let rsrc = try? vault.rsrcFork(for: entry.id), !rsrc.isEmpty {
+            let companionURL = tempDir.appendingPathComponent("._\(baseName)")
+            let typeCode = entry.typeCode ?? "????"
+            let creatorCode = entry.creatorCode ?? "????"
+            let appleDouble = makeAppleDouble(
+                resourceFork: rsrc,
+                typeCode: typeCode,
+                creatorCode: creatorCode)
+            try? appleDouble.write(to: companionURL)
+        }
+
+        return tempURL
     }
 
     /// Very lightweight HTML → Markdown conversion.
@@ -378,5 +443,83 @@ private extension LegacyMacDocConverter {
             of: "\n{3,}", with: "\n\n", options: .regularExpression)
 
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Minimal AppleDouble writer
+
+private extension LegacyMacDocConverter {
+
+    /// Build a minimal AppleDouble v2 file containing a Finder Info entry
+    /// (with type/creator codes) and a resource fork entry.
+    /// Reference: RFC 1740 / Apple Technical Note FL18 "AppleSingle/AppleDouble".
+    /// Layout:
+    ///   +0   /4  magic         0x00051607
+    ///   +4   /4  version       0x00020000
+    ///   +8   /16 filler        zeros
+    ///   +24  /2  entry count   N (big-endian)
+    ///   +26  /N*12 entry descriptors  (id, offset, length)
+    ///   +... entry data
+    static func makeAppleDouble(resourceFork: Data,
+                                typeCode: String,
+                                creatorCode: String) -> Data {
+        var out = Data()
+
+        // Header
+        out.append(contentsOf: [0x00, 0x05, 0x16, 0x07])  // magic
+        out.append(contentsOf: [0x00, 0x02, 0x00, 0x00])  // version 2
+        out.append(Data(repeating: 0, count: 16))         // filler
+        out.append(contentsOf: [0x00, 0x02])              // 2 entries
+
+        // Build Finder Info entry data (32 bytes):
+        //   +0 /4  type code
+        //   +4 /4  creator code
+        //   +8 /2  finder flags
+        //   +10/4  location (v,h)
+        //   +14/2  folder
+        //   +16/16 extended finder info (zeros)
+        var finderInfo = Data()
+        finderInfo.append(fourCharData(typeCode))
+        finderInfo.append(fourCharData(creatorCode))
+        finderInfo.append(Data(repeating: 0, count: 24))
+
+        // Compute offsets
+        // Header size: 4 + 4 + 16 + 2 = 26
+        // Each entry descriptor: 12 bytes, we have 2 → 24
+        // Data starts at offset 26 + 24 = 50
+        let headerEnd: UInt32 = 26 + 24
+        let finderOffset: UInt32 = headerEnd
+        let finderLength: UInt32 = UInt32(finderInfo.count)
+        let rsrcOffset: UInt32 = finderOffset + finderLength
+        let rsrcLength: UInt32 = UInt32(resourceFork.count)
+
+        // Entry descriptor 1: Finder Info (id 9)
+        out.append(beUInt32(9))
+        out.append(beUInt32(finderOffset))
+        out.append(beUInt32(finderLength))
+        // Entry descriptor 2: Resource Fork (id 2)
+        out.append(beUInt32(2))
+        out.append(beUInt32(rsrcOffset))
+        out.append(beUInt32(rsrcLength))
+
+        // Entry data
+        out.append(finderInfo)
+        out.append(resourceFork)
+
+        return out
+    }
+
+    /// Convert a 4-character code String to 4 bytes, padding/truncating as needed.
+    static func fourCharData(_ s: String) -> Data {
+        let bytes = Array(s.utf8.prefix(4))
+        var out = Data(bytes)
+        while out.count < 4 { out.append(0x20) }  // pad with spaces
+        return out
+    }
+
+    /// Big-endian UInt32 as Data.
+    static func beUInt32(_ v: UInt32) -> Data {
+        var be = v.bigEndian
+        return Data(bytes: &be, count: 4)
     }
 }

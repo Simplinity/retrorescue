@@ -521,7 +521,7 @@ final class VaultState: ObservableObject {
         if LegacyMacDocConverter.canConvert(entry, vault: vault) {
             if let md = LegacyMacDocConverter.convertToMarkdown(vault: vault, entry: entry),
                !md.isEmpty {
-                let formatName = LegacyMacDocConverter.formatName(for: entry) ?? "Legacy Mac document"
+                let formatName = LegacyMacDocConverter.formatName(for: entry, vault: vault) ?? "Legacy Mac document"
                 previewText = "_\(formatName)_\n\n" + md
                 return
             }

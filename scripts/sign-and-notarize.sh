@@ -85,8 +85,25 @@ echo "✅ Build succeeded: $APP_PATH"
 echo "🔏 Signing embedded binaries…"
 ENTITLEMENTS="Sources/RetroRescue/RetroRescue.entitlements"
 
-# Sign bundled tools (no entitlements needed for command-line tools)
+# Sign bundled tools INSIDE-OUT: dylibs first, then the executables that link
+# against them. install_name_tool can invalidate signatures, but our bundle
+# script (scripts/bundle-mwaw-tools.sh) already re-signed everything ad-hoc.
+# Here we replace those ad-hoc signatures with proper Developer ID signatures.
+
+# Phase 1: dylibs (no dependencies on each other within the bundle)
+for dylib in "$APP_PATH/Contents/Resources/tools/"*.dylib; do
+    [ -f "$dylib" ] || continue
+    echo "   Signing dylib: $(basename "$dylib")"
+    codesign --force --options runtime --timestamp \
+        --sign "$IDENTITY" "$dylib"
+done
+
+# Phase 2: executable tools (depend on the dylibs above)
 for tool in "$APP_PATH/Contents/Resources/tools/"*; do
+    [ -f "$tool" ] || continue
+    case "$tool" in
+        *.dylib) continue ;;  # already signed in phase 1
+    esac
     echo "   Signing tool: $(basename "$tool")"
     codesign --force --options runtime --timestamp \
         --sign "$IDENTITY" "$tool"
